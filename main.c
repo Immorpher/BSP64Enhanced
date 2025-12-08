@@ -43,7 +43,7 @@ static void ShowTitle(void)
 
   TextPrintMsg("\n"
   "[[ dim-bsp64 v0.3 ]]\n"
-  "Based on d64bsp by MP2E, which in turn is based on...\n"
+  "Based on d64bsp by Kaiser, which in turn is based on...\n"
   "GLBSP by Andrew Apted, which in turn is based on...\n"
   "BSP 2.3. Further credits follow this message.\n\n");
 }
