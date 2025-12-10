@@ -192,8 +192,7 @@ static void BlockAdd(int blk_num, int line_index)
 //dma: 2-11-25: allow for ignoring certain lines from blockmap addition
 static void BlockAddLine(linedef_t *L)
 {
-  if(L->tag > 32767) return;     //dma: if linedef tag is "negative", skip adding to blockmap
-  if((L->flags & 0x100) && (L->flags & 0x80)) return; //dma: if both "show" and "hide" (on automap), then skip this line.
+  if((L->flags & LINEFLAG_HIDE_AUTOMAP) && (L->flags & LINEFLAG_SHOW_AUTOMAP)) return; //dma: if both "show" and "hide" (on automap), then skip this line.
 
   int x1 = (int) L->start->x;
   int y1 = (int) L->start->y;

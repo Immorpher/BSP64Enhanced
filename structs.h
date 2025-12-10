@@ -23,6 +23,46 @@
 
 #include "system.h"
 
+/* ------ Linedef Flags ------------------------------------ */
+// First 16 bit flags in normal flags spot
+#define LINEFLAG_IMPASSABLE		0x1
+#define LINEFLAG_BLOCK MONSTERS	0x2
+#define LINEFLAG_TWO_SIDED		0x4
+#define LINEFLAG_UPPER_UNPEGGED	0x8
+#define LINEFLAG_LOWER_UNPEGGED	0x10
+#define LINEFLAG_SHOW_ONE_SIDED	0x20
+#define LINEFLAG_BLOCK_SOUND	0x40
+#define LINEFLAG_HIDE_AUTOMAP	0x80
+#define LINEFLAG_SHOW_AUTOMAP	0x100
+#define LINEFLAG_RENDER_MIDDLE	0x200
+#define LINEFLAG_NO_OCCLUSION	0x400
+#define LINEFLAG_BLOCK_PROJ		0x800
+#define LINEFLAG_DEAD_TRIGGER	0x1000
+#define LINEFLAG_DECAL_UPPER	0x2000
+#define LINEFLAG_DECAL_LOWER	0x4000
+#define LINEFLAG_DISPLAY_UPPER	0x8000
+// Next 8 bit flags in renderflags/specials[0]
+#define LINEFLAG_DISPLAY_LOWER	0x1
+#define LINEFLAG_SCROLL_LEFT	0x2
+#define LINEFLAG_SCROLL_RIGHT	0x4
+#define LINEFLAG_SCROLL_UP		0x8
+#define LINEFLAG_SCROLL_DOWN	0x10
+#define LINEFLAG_PEG_UP_COLOR	0x20
+#define LINEFLAG_PEG_LOW_COLOR	0x40
+#define LINEFLAG_COLOR_BLENDING	0x80
+// Last 8 bit flags in textureflags/specials[1]
+#define LINEFLAG_TRIGGER_FRONT	0x1
+#define LINEFLAG_HIDE_SPECIAL	0x2
+#define LINEFLAG_FLIP_UP_COLOR	0x4
+#define LINEFLAG_BLOCK_PLAYEX	0x8	// EX+ only
+#define LINEFLAG_NO_BLOCKMAP	0x10 // DIM-BSP64 only
+#define LINEFLAG_COMB_SIDEDEF	0x20 // DIM-BSP64 only
+#define LINEFLAG_MIRROR_HORIZ	0x40
+#define LINEFLAG_MIRROR_VERT	0x80
+
+/* ------ Hexen Flags ------------------------------------ */
+#define HEXTYPE_POLY_START     1
+#define HEXTYPE_POLY_EXPLICIT  5
 
 /* ----- The wad structures ---------------------- */
 
@@ -102,10 +142,6 @@ typedef struct raw_hexen_linedef_s
 }
 raw_hexen_linedef_t;
 
-#define LINEFLAG_TWO_SIDED  4
-
-#define HEXTYPE_POLY_START     1
-#define HEXTYPE_POLY_EXPLICIT  5
 
 
 typedef struct raw_sidedef_s
