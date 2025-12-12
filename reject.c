@@ -85,6 +85,10 @@ static void GroupSectors(void)
 
     sec1 = line->right->sector;
     sec2 = line->left->sector;
+	
+	// immorpher: new special to exclude sectors from reject, making enemies blind in them 
+	if (sec1->special == 999 || sec2->special == 999)
+		continue;
     
     if (! sec1 || ! sec2 || sec1 == sec2)
       continue;
