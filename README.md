@@ -8,9 +8,9 @@ Copy "dim-bsp64.cfg" and "dim-bsp64.exe" into the "Compilers\Nodebuilders" folde
 
 ## Usage
 
-Lines can be omitted from the blockmap by using the No Blockmap (0x10000000) flag, OR by combining the "Always show on automap" AND "Never shown on automap" linedef flags. This can allow monsters to fall down and climb up small sectors that they may not normally be able to or it can allow for players to walk through thin sectors.
+Lines can be omitted from the blockmap by using the "No Blockmap" (0x10000000) flag, OR by combining the "Always show on automap" AND "Never shown on automap" linedef flags. This can allow monsters to fall down and climb up small sectors that they may not normally be able to or it can allow for players to walk through thin sectors.
 
-There is also the ability identical sidedefs into a single sidedef to save space. Typically lines that scroll or have switches will be excluded. The Merge Sides (0x20000000) flag can be used to force the merger of sidefs associated with lines. This forced merger can allow scrolling at faster speeds and multiple switches to be activated at once.
+There is also the ability identical sidedefs into a single sidedef to save space. Typically lines that scroll or have switches will be excluded. The "Merge Sides" (0x20000000) flag can be used to force the merger of sidedefs associated with lines of the same tag. This forced merger can allow scrolling at faster speeds and multiple switches to be activated at once.
 
 By using the special 999 (Blind To Monsters) on a sector, it can be used to break a monster's line of sight from or to a sector, making them effectively blind, but they can still hear unless flagged not to (Ambush).
 
