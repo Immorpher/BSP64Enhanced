@@ -320,7 +320,6 @@ static int VertexCompare(const void *p1, const void *p2)
 
 static int SidedefCompare(const void *p1, const void *p2)
 {
-  int comp;
 
   int side1 = ((const uint16_g *) p1)[0];
   int side2 = ((const uint16_g *) p2)[0];
@@ -366,17 +365,6 @@ static int SidedefCompare(const void *p1, const void *p2)
   if(A->mid_index != B->mid_index) return 1;
 
   return 0;
-
-/*
-  comp = memcmp(A->upper_index, B->upper_index, sizeof(uint16_g));
-  if (comp) return comp;
-  
-  comp = memcmp(A->lower_index, B->lower_index, sizeof(uint16_g));
-  if (comp) return comp;
-  
-  comp = memcmp(A->mid_index, B->mid_index, sizeof(uint16_g));
-  if (comp) return comp;
-*/
 
   // sidedefs must be the same
   return 0;
@@ -782,11 +770,14 @@ void TestForWindowEffect(linedef_t *L)
 
   float_g back_dist = 999999.0;
   sector_t * back_open = NULL;
-  int back_line = -1;
 
   float_g front_dist = 999999.0;
   sector_t * front_open = NULL;
-  int front_line = -1;
+  
+  #if DEBUG_WINDOW_FX
+	int back_line = -1;
+	int front_line = -1;
+  #endif
 
   for (i=0; i < num_linedefs; i++)
   {
@@ -853,7 +844,9 @@ void TestForWindowEffect(linedef_t *L)
       {
         front_dist = dist;
         front_open = hit_side ? hit_side->sector : NULL;
-        front_line = i;
+		#if DEBUG_WINDOW_FX
+			front_line = i;
+		#endif
       }
     }
     else
@@ -862,7 +855,9 @@ void TestForWindowEffect(linedef_t *L)
       {
         back_dist = dist;
         back_open = hit_side ? hit_side->sector : NULL;
-        back_line = i;
+		#if DEBUG_WINDOW_FX
+			back_line = i;
+		#endif
       }
     }
   }

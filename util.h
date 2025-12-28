@@ -40,7 +40,7 @@
 #endif
 
 #ifndef I_ROUND
-#define I_ROUND(x)  ((int) (((x) < 0.0f) ? ((x) - 0.5f) : ((x) + 0.5f)))
+#define I_ROUND(x)  ((int) round(x))
 #endif
 
 /* ----- function prototypes ---------------------------- */
@@ -93,6 +93,5 @@ int UtilFileExists(const char *filename);
 // checksum functions
 void Adler32_Begin(uint32_g *crc);
 void Adler32_AddBlock(uint32_g *crc, const uint8_g *data, int length);
-void Adler32_Finish(uint32_g *crc);
 
 #endif /* __GLBSP_UTIL_H__ */

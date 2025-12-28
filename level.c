@@ -681,9 +681,7 @@ static int SegCompare(const void *p1, const void *p2)
 
 /* ----- writing routines ------------------------------ */
 
-static const uint8_g *lev_v2_magic = (uint8_g *) "gNd2";
 static const uint8_g *lev_v3_magic = (uint8_g *) "gNd3";
-static const uint8_g *lev_v5_magic = (uint8_g *) "gNd5";
 
 static int real_vert_num = 0;
 
@@ -781,44 +779,6 @@ void PutLeafs(void)
 			seg = seg->next;
 		}
 	}
-}
-
-void PutV2Vertices(int do_v5)
-{
-  int count, i;
-  lump_t *lump;
-
-  DisplayTicker();
-
-  lump = CreateLevelLump("LEAFS");
-
-  //if (do_v5)
-   //   AppendLevelLump(lump, lev_v5_magic, 4);
-  //else
-    //  AppendLevelLump(lump, lev_v2_magic, 4);
-
-  for (i=0, count=0; i < num_vertices; i++)
-  {
-    raw_v2_vertex_t raw;
-    vertex_t *vert = lev_vertices[i];
-
-    if (! (vert->index & IS_GL_VERTEX))
-      continue;
-
-    raw.x = SINT32((int)(vert->x * 65536.0));
-    raw.y = SINT32((int)(vert->y * 65536.0));
-
-    AppendLevelLump(lump, &raw, sizeof(raw));
-
-    count++;
-  }
-
-  if (count != num_gl_vert)
-    InternalError("PutV2Vertices miscounted (%d != %d)", count,
-      num_gl_vert);
-
-  if (count > 32767)
-    MarkSoftFailure(LIMIT_GL_VERT);
 }
 
 void PutSectors(void)
@@ -1322,16 +1282,13 @@ static void PutOneV5Node(node_t *node, lump_t *lump)
 # endif
 }
 
-void PutNodes(char *name, int do_gl, int do_v5, node_t *root)
+void PutNodes(char *name, int do_v5, node_t *root)
 {
   lump_t *lump;
 
   DisplayTicker();
 
-  //if (do_gl)
-    //lump = CreateGLLump(name);
-  //else
-    lump = CreateLevelLump(name);
+  lump = CreateLevelLump(name);
 
   node_cur_index = 0;
 
@@ -1586,11 +1543,6 @@ void LoadLevel(void)
 
   const char *level_name = GetLevelName();
 
-  boolean_g normal_exists = CheckForNormalNodes();
-
-  /*lev_doing_normal = !cur_info->gwa_mode && (cur_info->force_normal || 
-    (!cur_info->no_normal && !normal_exists));*/
-
   lev_doing_normal = TRUE;	// force build normal nodes
 
   // -JL- Identify Hexen mode by presence of BEHAVIOR lump
@@ -1730,8 +1682,6 @@ void PutGLChecksum(void)
   if (lump && lump->length > 0)
     Adler32_AddBlock(&crc, lump->data, lump->length);
 
-  Adler32_Finish(&crc);
-
   sprintf(num_buf, "0x%08x", crc);
 
   AddGLTextLine("CHECKSUM", num_buf);
@@ -1780,23 +1730,6 @@ void SaveLevel(node_t *root_node)
       }
     }
 
-    //if (cur_info->spec_version == 1)
-      //PutVertices("GL_VERT", TRUE);
-    //else
-      //PutV2Vertices(lev_force_v5);
-
-    //if (lev_force_v3 || lev_force_v5)
-      //PutV3Segs(lev_force_v5);
-    //else
-      //PutGLSegs();
-
-    //if (lev_force_v3 || lev_force_v5)
-    //  PutV3Subsecs(lev_force_v5);
-   // else
-      //PutSubsecs("SSECTORS", TRUE);
-
-    //PutNodes("GL_NODES", TRUE, lev_force_v5, root_node);
-
   }
 
   if (lev_doing_normal)
@@ -1813,23 +1746,7 @@ void SaveLevel(node_t *root_node)
     PutLinedefs();
 	PutSegs();
 	PutSubsecs("SSECTORS", FALSE);
-    PutNodes("NODES", FALSE, FALSE, root_node);
- 
-    /*if (lev_force_v5)
-    {
-      // don't report a problem when -v5 was explicitly given
-      if (cur_info->spec_version < 5)
-        MarkZDSwitch();
-
-      SaveZDFormat(root_node);
-    }
-    else
-    {*/
-      //PutSegs();
-      //PutSubsecs("SSECTORS", FALSE);
-      //PutNodes("NODES", FALSE, FALSE, root_node);
-		//PutNodes("NODES", TRUE, lev_force_v5, root_node);
-    //}
+    PutNodes("NODES", FALSE, root_node);
 
     // -JL- Don't touch blockmap and reject if not doing normal nodes
     PutBlockmap();
@@ -1837,21 +1754,4 @@ void SaveLevel(node_t *root_node)
     if (!cur_info->no_reject || !FindLevelLump("REJECT"))
       PutReject();
   }
-
-  // keyword support (v5.0 of the specs)
-  //AddGLTextLine("BUILDER", "glBSP " GLBSP_VER);
-  //PutGLOptions();
-  //{
-  //  char *time_str = UtilTimeString();
-
-  //  if (time_str)
-  //  {
-  //    AddGLTextLine("TIME", time_str);
-  //    UtilFree(time_str);
-   // }
-  //}
-
-  // this must be done _after_ the normal nodes have been built,
-  // so that we use the new VERTEXES lump in the checksum.
- // PutGLChecksum();
 }

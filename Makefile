@@ -3,6 +3,8 @@ DEBUGNAME=dim-bsp64-debug.exe
  
 CC="C:\msys64\mingw32\bin\gcc.exe"
 LDFLAGS=-lmingw32
+
+CFLAGS = -O2 -Wall -Wno-unknown-pragmas
  
 src = $(wildcard *.c)
 obj = $(src:.c=.o)

@@ -287,8 +287,3 @@ void Adler32_AddBlock(uint32_g *crc, const uint8_g *data, int length)
     *crc = (s2 << 16) | s1;
 }
 
-void Adler32_Finish(uint32_g *crc)
-{
-  /* nothing to do */
-}
-
