@@ -35,10 +35,6 @@
 #define MIN(x,y)  ((x) < (y) ? (x) : (y))
 #endif
 
-#ifndef ABS
-#define ABS(x)  ((x) >= 0 ? (x) : -(x))
-#endif
-
 #ifndef I_ROUND
 #define I_ROUND(x)  ((int) round(x))
 #endif
