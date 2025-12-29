@@ -42,8 +42,9 @@ static void ShowTitle(void)
 {
 
   TextPrintMsg("\n"
-  "[[ dim-bsp64 v0.3 ]]\n"
-  "Based on d64bsp by Kaiser, which in turn is based on...\n"
+  "[[ BSP64 Enhanced v1.1 ]]\n"
+  "Based on DMA-BSP by Diema, which in turn is based on...\n"
+  "D64BSP by Kaiser, which in turn is based on...\n"
   "GLBSP by Andrew Apted, which in turn is based on...\n"
   "BSP 2.3. Further credits follow this message.\n\n");
 }
@@ -51,7 +52,8 @@ static void ShowTitle(void)
 static void ShowInfo(void)
 {
   TextPrintMsg(
-    "Credits should go to :-\n"
+    "Additional credits go to :-\n"
+    "  Zokum		              for explaining map compression\n"
     "  Janis Legzdinsh            for fixing up Hexen support\n"
     "  Andy Baker & Marc Pullen   for their invaluable help\n"
     "  Colin Reed & Lee Killough  for creating the original BSP\n"
@@ -65,17 +67,17 @@ static void ShowInfo(void)
     "Public License, and comes with ABSOLUTELY NO WARRANTY.  See the\n"
     "accompanying documentation for more details.\n"
     "\n"
-    "Usage: dim-bsp64 [options] input.wad ... [-o output.wad]\n"
-    "Or:    dim-bsp64 @arg_file.rsp\n"
+    "Usage: BSP64Enhanced [options] input.wad ... [-o output.wad]\n"
+    "Or:    BSP64Enhanced @arg_file.rsp\n"
     "\n"
-    "For a list of the available options, type: dim-bsp64 -help\n"
+    "For a list of the available options, type: BSP64Enhanced -help\n"
   );
 }
 
 static void ShowOptions(void)
 {
   TextPrintMsg(
-    "Usage: dim-bsp64 [options] input.wad ... [-o output.wad]\n"
+    "Usage: BSP64Enhanced [options] input.wad ... [-o output.wad]\n"
     "\n"
     "General Options:\n"
     "  -q  -quiet         Quieter output, no level stats\n"
@@ -97,6 +99,7 @@ static void ShowOptions(void)
     "  -xn -nonormal      Don't add (if missing) the normal nodes\n"
     "  -xp -noprog        Don't show progress indicator\n"
     "  -xu -noprune       Never prune linedefs or sidedefs\n"
+    "  -e  -compedge      Compress edges by blockmap removal\n"
   );
 }
 

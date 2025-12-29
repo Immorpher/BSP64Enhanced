@@ -796,9 +796,6 @@ void PutSectors(void)
     raw.floor_h = SINT16(sector->floor_h);
     raw.ceil_h  = SINT16(sector->ceil_h);
 
-//    memcpy(raw.floor_tex, sector->floor_tex, sizeof(raw.floor_tex));
- //   memcpy(raw.ceil_tex,  sector->ceil_tex,  sizeof(raw.ceil_tex));
-
 	raw.floor_index = UINT16(sector->floor_index);
 	raw.ceiling_index = UINT16(sector->ceil_index);
 
@@ -813,9 +810,6 @@ void PutSectors(void)
     raw.tag = UINT16(sector->tag);
 	raw.flag = UINT16(sector->flag);
 
-//    raw.light = UINT16(sector->light);
-  //  raw.special = UINT16(sector->special);
-   // raw.tag   = SINT16(sector->tag);
 
     AppendLevelLump(lump, &raw, sizeof(raw));
   }
@@ -1587,7 +1581,7 @@ void LoadLevel(void)
   {
     // NOTE: order here is critical
 
-    if (cur_info->pack_sides)
+    if (!cur_info->no_prune) // disable packing of sidedefs with no prune
       DetectDuplicateSidedefs();
 
     if (cur_info->merge_vert)
@@ -1649,7 +1643,7 @@ void PutGLOptions(void)
   if (cur_info->fast         ) strcat(option_buf, " -f");
   if (cur_info->force_normal ) strcat(option_buf, " -n");
   if (cur_info->merge_vert   ) strcat(option_buf, " -m");
-  if (cur_info->pack_sides   ) strcat(option_buf, " -p");
+  if (cur_info->comp_edge    ) strcat(option_buf, " -e");
   if (cur_info->prune_sect   ) strcat(option_buf, " -u");
   if (cur_info->skip_self_ref) strcat(option_buf, " -s");
   if (cur_info->window_fx    ) strcat(option_buf, " -y");

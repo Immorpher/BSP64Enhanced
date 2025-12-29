@@ -58,7 +58,7 @@ const nodebuildinfo_t default_buildinfo =
   FALSE,   // quiet
   FALSE,   // mini_warnings
   FALSE,   // force_hexen
-  FALSE,   // pack_sides
+  FALSE,   // comp_edge
   FALSE,   // fast
 
   2,   // spec_version
@@ -266,7 +266,7 @@ glbsp_ret_e GlbspParseArgs(nodebuildinfo_t *info,
     HANDLE_BOOLEAN2("q",  "quiet",      quiet)
     HANDLE_BOOLEAN2("f",  "fast",       fast)
     HANDLE_BOOLEAN2("w",  "warn",       mini_warnings)
-    HANDLE_BOOLEAN2("p",  "pack",       pack_sides)
+    HANDLE_BOOLEAN2("e",  "compedge",   comp_edge)
     HANDLE_BOOLEAN2("n",  "normal",     force_normal)
     HANDLE_BOOLEAN2("xr", "noreject",   no_reject)
     HANDLE_BOOLEAN2("xp", "noprog",     no_progress)
@@ -280,7 +280,7 @@ glbsp_ret_e GlbspParseArgs(nodebuildinfo_t *info,
 
     // to err is human...
     HANDLE_BOOLEAN("noprogress",  no_progress)
-    HANDLE_BOOLEAN("packsides",   pack_sides)
+    HANDLE_BOOLEAN("compedge",   comp_edge)
     HANDLE_BOOLEAN("prunesect",   prune_sect)
 
     // ignore these options for backwards compatibility
@@ -351,13 +351,6 @@ glbsp_ret_e GlbspCheckInfo(nodebuildinfo_t *info,
   {
     info->load_all = TRUE;
     info->same_filenames = TRUE;
-  }
-
-  if (info->no_prune && info->pack_sides)
-  {
-    info->pack_sides = FALSE;
-    SetErrorMsg("-noprune and -packsides cannot be used together");
-    return GLBSP_E_BadInfoFixed;
   }
 
   if (info->gwa_mode && info->force_normal)

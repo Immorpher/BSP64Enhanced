@@ -26,7 +26,7 @@
 /* ------ Linedef Flags ------------------------------------ */
 // First 16 bit flags in normal flags spot
 #define LINEFLAG_IMPASSABLE		0x1
-#define LINEFLAG_BLOCK MONSTERS	0x2
+#define LINEFLAG_BLOCK_MONSTERS	0x2
 #define LINEFLAG_TWO_SIDED		0x4
 #define LINEFLAG_UPPER_UNPEGGED	0x8
 #define LINEFLAG_LOWER_UNPEGGED	0x10
@@ -54,9 +54,9 @@
 #define LINEFLAG_TRIGGER_FRONT	0x1
 #define LINEFLAG_HIDE_SPECIAL	0x2
 #define LINEFLAG_FLIP_UP_COLOR	0x4
-#define LINEFLAG_BLOCK_PLAYEX	0x8	// EX+ only
-#define LINEFLAG_NO_BLOCKMAP	0x10 // DIM-BSP64 only
-#define LINEFLAG_COMB_SIDEDEF	0x20 // DIM-BSP64 only
+#define LINEFLAG_BLOCK_PLAYER	0x8	// EX+ only
+#define LINEFLAG_NO_BLOCKMAP	0x10 // BSP64 Enhanced only
+#define LINEFLAG_COMB_SIDEDEF	0x20 // BSP64 Enhanced only
 #define LINEFLAG_MIRROR_HORIZ	0x40
 #define LINEFLAG_MIRROR_VERT	0x80
 

@@ -1,5 +1,5 @@
-EXECUTABLE=dim-bsp64.exe
-DEBUGNAME=dim-bsp64-debug.exe
+EXECUTABLE=BSP64Enhanced.exe
+DEBUGNAME=BSP64Enhanced-debug.exe
  
 CC="C:\msys64\mingw32\bin\gcc.exe"
 LDFLAGS=-lmingw32
