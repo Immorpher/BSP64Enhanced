@@ -205,7 +205,7 @@ static void BlockAddLine(linedef_t *L)
 		
 		if(sec1->tag == sec2->tag) { // immorpher: do not compress if sectors might move due to different tags
 			if((sec1->floor_h == sec2->floor_h) && (sec1->ceil_h == sec2->ceil_h)) return; //immorpher: exclude sectors of same size and type from collisions
-			if(cur_info->comp_edge && (abs(sec1->floor_h - sec2->floor_h) <= 32) && ((sec1->ceil_h - sec2->floor_h) >= 64) && ((sec2->ceil_h - sec1->floor_h) >= 64)) return; //immorpher: if compress edges allow for more leeway in compressing edges
+			if(cur_info->comp_edge && (abs(sec1->floor_h - sec2->floor_h) <= 32) && ((sec1->ceil_h - sec2->floor_h) >= 64) && ((sec2->ceil_h - sec1->floor_h) >= 64)) return; //immorpher: if compress edges enabled allow for more leeway in compressing edges
 		}
   }
  

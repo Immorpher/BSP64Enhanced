@@ -85,8 +85,8 @@ static void ShowOptions(void)
     "  -w  -warn          Show extra warning messages\n"
     "  -n  -normal        Forces the normal nodes to be rebuilt\n"
     "  -c  -factor ###    Sets the cost assigned to SEG splits\n"
-    "  -p  -pack          Pack sidedefs (remove duplicates)\n"
     "  -xr -noreject      Don't clobber the REJECT map\n"
+    "  -e  -compedge      Compress edges by blockmap removal\n"
     "\n");
 
   TextPrintMsg(
@@ -99,7 +99,7 @@ static void ShowOptions(void)
     "  -xn -nonormal      Don't add (if missing) the normal nodes\n"
     "  -xp -noprog        Don't show progress indicator\n"
     "  -xu -noprune       Never prune linedefs or sidedefs\n"
-    "  -e  -compedge      Compress edges by blockmap removal\n"
+	"  -s  -skipselfref   Ignore self referencing lines\n"
   );
 }
 
