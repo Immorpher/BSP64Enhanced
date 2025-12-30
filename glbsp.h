@@ -98,6 +98,7 @@ typedef struct nodebuildinfo_s
   boolean_g mini_warnings;
   boolean_g force_hexen;
   boolean_g comp_edge;
+  boolean_g no_block_rem;
   boolean_g fast;
 
   int spec_version;  // 1, 2, 3 or 5

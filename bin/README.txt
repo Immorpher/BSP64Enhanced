@@ -25,3 +25,28 @@ Sectors can be removed from the "REJECT" lump with the special 999 (Blind To Mon
 In addition to all of the features in the normal mode, the compress edges mode will more aggressively omit lines from the blockmap. Specifically non-special lines that border sectors that are only 32 units high (or lower) and the ceiling gap is 64 units high (or greater) will be omitted. Consequences of this allows enemies to fall down from these ledges and transverse stairs more easily too. The player can approach some of these edges a bit closer than normal too.
 
 Special lines are lines that contain a special (actions, macros, and switch properties), have a non-zero tag, border sectors with differing tags, or use any flags which specifically block movement (one-sided, block projectiles, block monsters, and ect...). These special lines are excluded from edge compression, thus any of these properties can be added to any line (or a tag to a sector) where you may not want enemies or players being able to approach closely to.
+
+### Command-line Commands
+
+These additional options can be added to the nodebuilder configurations of the "BSP64Enhanced.cfg" file or they can be used when running the nodebuilder from command-line.
+
+General Options:
+  -q  -quiet         Quieter output, no level stats
+  -f  -fast          Reuse original nodes to build faster
+  -w  -warn          Show extra warning messages
+  -n  -normal        Forces the normal nodes to be rebuilt
+  -xr -noreject      Don't clobber the REJECT map
+  -e  -compedge      Compress edges by blockmap removal
+  -nb -noblockrem    Don't remove lines from blockmap
+
+Advanced Options:
+  -v1 .. -v5         Version of GL-Nodes to use (1,2,3 or 5)
+  -m  -mergevert     Merge duplicate vertices
+  -y  -windowfx      Handle the 'One-Sided Window' trick
+  -u  -prunesec      Remove unused sectors
+  -b  -maxblock ###  Sets the BLOCKMAP truncation limit
+  -c  -factor ###    Sets the cost assigned to SEG splits
+  -xn -nonormal      Don't add (if missing) the normal nodes
+  -xp -noprog        Don't show progress indicator
+  -xu -noprune       Never prune linedefs or sidedefs
+  -s  -skipselfref   Ignore self referencing lines

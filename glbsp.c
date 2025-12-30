@@ -59,6 +59,7 @@ const nodebuildinfo_t default_buildinfo =
   FALSE,   // mini_warnings
   FALSE,   // force_hexen
   FALSE,   // comp_edge
+  FALSE,   // no_block_rem
   FALSE,   // fast
 
   2,   // spec_version
@@ -267,6 +268,7 @@ glbsp_ret_e GlbspParseArgs(nodebuildinfo_t *info,
     HANDLE_BOOLEAN2("f",  "fast",       fast)
     HANDLE_BOOLEAN2("w",  "warn",       mini_warnings)
     HANDLE_BOOLEAN2("e",  "compedge",   comp_edge)
+    HANDLE_BOOLEAN2("nb", "noblockrem", no_block_rem)
     HANDLE_BOOLEAN2("n",  "normal",     force_normal)
     HANDLE_BOOLEAN2("xr", "noreject",   no_reject)
     HANDLE_BOOLEAN2("xp", "noprog",     no_progress)
@@ -280,7 +282,8 @@ glbsp_ret_e GlbspParseArgs(nodebuildinfo_t *info,
 
     // to err is human...
     HANDLE_BOOLEAN("noprogress",  no_progress)
-    HANDLE_BOOLEAN("compedge",   comp_edge)
+    HANDLE_BOOLEAN("compedge",    comp_edge)
+    HANDLE_BOOLEAN("noblockrem",  no_block_rem)
     HANDLE_BOOLEAN("prunesect",   prune_sect)
 
     // ignore these options for backwards compatibility

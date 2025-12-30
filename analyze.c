@@ -364,8 +364,6 @@ static int SidedefCompare(const void *p1, const void *p2)
   if(A->lower_index != B->lower_index) return 1;
   if(A->mid_index != B->mid_index) return 1;
 
-  return 0;
-
   // sidedefs must be the same
   return 0;
 }

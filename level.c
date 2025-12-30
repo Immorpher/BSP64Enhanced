@@ -1420,6 +1420,7 @@ void PutGLOptions(void)
   if (cur_info->force_normal ) strcat(option_buf, " -n");
   if (cur_info->merge_vert   ) strcat(option_buf, " -m");
   if (cur_info->comp_edge    ) strcat(option_buf, " -e");
+  if (cur_info->no_block_rem ) strcat(option_buf, " -nb");
   if (cur_info->prune_sect   ) strcat(option_buf, " -u");
   if (cur_info->skip_self_ref) strcat(option_buf, " -s");
   if (cur_info->window_fx    ) strcat(option_buf, " -y");

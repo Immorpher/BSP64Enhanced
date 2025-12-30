@@ -84,9 +84,9 @@ static void ShowOptions(void)
     "  -f  -fast          Reuse original nodes to build faster\n"
     "  -w  -warn          Show extra warning messages\n"
     "  -n  -normal        Forces the normal nodes to be rebuilt\n"
-    "  -c  -factor ###    Sets the cost assigned to SEG splits\n"
     "  -xr -noreject      Don't clobber the REJECT map\n"
     "  -e  -compedge      Compress edges by blockmap removal\n"
+	"  -nb -noblockrem    Don't remove lines from blockmap\n"
     "\n");
 
   TextPrintMsg(
@@ -96,6 +96,7 @@ static void ShowOptions(void)
     "  -y  -windowfx      Handle the 'One-Sided Window' trick\n"
     "  -u  -prunesec      Remove unused sectors\n"
     "  -b  -maxblock ###  Sets the BLOCKMAP truncation limit\n"
+    "  -c  -factor ###    Sets the cost assigned to SEG splits\n"
     "  -xn -nonormal      Don't add (if missing) the normal nodes\n"
     "  -xp -noprog        Don't show progress indicator\n"
     "  -xu -noprune       Never prune linedefs or sidedefs\n"

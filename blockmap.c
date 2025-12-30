@@ -194,12 +194,14 @@ static void BlockAddLine(linedef_t *L)
 {
   sector_t *sec1, *sec2;
   
-  if((L->flags & LINEFLAG_HIDE_AUTOMAP) && (L->flags & LINEFLAG_SHOW_AUTOMAP)) return; //dma: if both "show" and "hide" (on automap), then skip this line.
-  
-  if(L->specials[1] & LINEFLAG_NO_BLOCKMAP) return; //immorpher: unused flag to hide line from blockmap
-  
-  if ((L->flags & LINEFLAG_TWO_SIDED) && (L->tag == 0) && (L->specials[2] == 0) && (L->specials[3] == 0) && !(L->flags & LINEFLAG_IMPASSABLE) && !(L->flags & LINEFLAG_BLOCK_MONSTERS) && !(L->flags & LINEFLAG_BLOCK_PROJ) && !(L->specials[1] & LINEFLAG_BLOCK_PLAYER)) //immorpher: does the line have the right properties to be considered to be automatically excluded?
+  if(!cur_info->no_block_rem)
   {
+	if((L->flags & LINEFLAG_HIDE_AUTOMAP) && (L->flags & LINEFLAG_SHOW_AUTOMAP)) return; //dma: if both "show" and "hide" (on automap), then skip this line.
+
+	if(L->specials[1] & LINEFLAG_NO_BLOCKMAP) return; //immorpher: unused flag to hide line from blockmap
+
+	if ((L->flags & LINEFLAG_TWO_SIDED) && (L->tag == 0) && (L->specials[2] == 0) && (L->specials[3] == 0) && !(L->flags & LINEFLAG_IMPASSABLE) && !(L->flags & LINEFLAG_BLOCK_MONSTERS) && !(L->flags & LINEFLAG_BLOCK_PROJ) && !(L->specials[1] & LINEFLAG_BLOCK_PLAYER)) //immorpher: does the line have the right properties to be considered to be automatically excluded?
+	{
 		sec1 = L->right->sector;
 		sec2 = L->left->sector;
 		
@@ -207,8 +209,8 @@ static void BlockAddLine(linedef_t *L)
 			if((sec1->floor_h == sec2->floor_h) && (sec1->ceil_h == sec2->ceil_h)) return; //immorpher: exclude sectors of same size and type from collisions
 			if(cur_info->comp_edge && (abs(sec1->floor_h - sec2->floor_h) <= 32) && ((sec1->ceil_h - sec2->floor_h) >= 64) && ((sec2->ceil_h - sec1->floor_h) >= 64)) return; //immorpher: if compress edges enabled allow for more leeway in compressing edges
 		}
+	}
   }
- 
 
   int x1 = (int) L->start->x;
   int y1 = (int) L->start->y;
