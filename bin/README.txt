@@ -31,22 +31,22 @@ Special lines are lines that contain a special (actions, macros, and switch prop
 These additional options can be added to the nodebuilder configurations of the "BSP64Enhanced.cfg" file or they can be used when running the nodebuilder from command-line.
 
 General Options:
-  -q  -quiet         Quieter output, no level stats
-  -f  -fast          Reuse original nodes to build faster
-  -w  -warn          Show extra warning messages
-  -n  -normal        Forces the normal nodes to be rebuilt
-  -xr -noreject      Don't clobber the REJECT map
-  -e  -compedge      Compress edges by blockmap removal
-  -nb -noblockrem    Don't remove lines from blockmap
++  -q  -quiet         Quieter output, no level stats
++  -f  -fast          Reuse original nodes to build faster
++  -w  -warn          Show extra warning messages
++  -n  -normal        Forces the normal nodes to be rebuilt
++  -xr -noreject      Don't clobber the REJECT map
++  -e  -compedge      Compress edges by blockmap removal
++  -nb -noblockrem    Don't remove lines from blockmap
 
 Advanced Options:
-  -v1 .. -v5         Version of GL-Nodes to use (1,2,3 or 5)
-  -m  -mergevert     Merge duplicate vertices
-  -y  -windowfx      Handle the 'One-Sided Window' trick
-  -u  -prunesec      Remove unused sectors
-  -b  -maxblock ###  Sets the BLOCKMAP truncation limit
-  -c  -factor ###    Sets the cost assigned to SEG splits
-  -xn -nonormal      Don't add (if missing) the normal nodes
-  -xp -noprog        Don't show progress indicator
-  -xu -noprune       Never prune linedefs or sidedefs
-  -s  -skipselfref   Ignore self referencing lines
++  -v1 .. -v5         Version of GL-Nodes to use (1,2,3 or 5)
++  -m  -mergevert     Merge duplicate vertices
++  -y  -windowfx      Handle the 'One-Sided Window' trick
++  -u  -prunesec      Remove unused sectors
++  -b  -maxblock ###  Sets the BLOCKMAP truncation limit
++  -c  -factor ###    Sets the cost assigned to SEG splits
++  -xn -nonormal      Don't add (if missing) the normal nodes
++  -xp -noprog        Don't show progress indicator
++  -xu -noprune       Never prune linedefs or sidedefs
++  -s  -skipselfref   Ignore self referencing lines
