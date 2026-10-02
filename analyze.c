@@ -318,54 +318,114 @@ static int VertexCompare(const void *p1, const void *p2)
   return (int)A->y - (int)B->y;
 }
 
-static int SidedefCompare(const void *p1, const void *p2)
+// Sidedefs are sorted into classes so that the comparison below is a proper
+// ordering (transitive and consistent).  Previously forced-merge sidedefs were
+// compared against other sidedefs with a different set of rules, which made the
+// ordering inconsistent.  qsort() could then leave sidedefs of the same
+// tag and sector separated by unrelated sidedefs, and since duplicates are only
+// detected between neighbours, some of them were never merged.
+#define SIDECLASS_FORCED  0  // flagged "Merge Sides": merged per tag and sector
+#define SIDECLASS_UNIQUE  1  // never merged (disabled or on a special line)
+#define SIDECLASS_NORMAL  2  // merged when completely identical
+
+static int CompareInts(int a, int b)
 {
+  if (a < b) return -1;
+  if (a > b) return +1;
 
-  int side1 = ((const uint16_g *) p1)[0];
-  int side2 = ((const uint16_g *) p2)[0];
+  return 0;
+}
 
+static int SidedefClass(const sidedef_t *S)
+{
+  // immorpher: explicit request to merge takes priority over everything else
+  if (S->merge_side == 1)
+    return SIDECLASS_FORCED;
+
+  // immorpher: do not merge sidedefs if explicitly disabled,
+  // and don't merge sidedefs on special lines
+  if (S->merge_side == 2 || S->on_special)
+    return SIDECLASS_UNIQUE;
+
+  return SIDECLASS_NORMAL;
+}
+
+static int SidedefSectorCompare(const sidedef_t *A, const sidedef_t *B)
+{
+  if (A->sector == B->sector) return 0;
+  if (A->sector == NULL) return -1;
+  if (B->sector == NULL) return +1;
+
+  return CompareInts(A->sector->index, B->sector->index);
+}
+
+// returns zero when the two sidedefs can be merged into one
+static int SidedefEquivCompare(int side1, int side2)
+{
   sidedef_t *A = lev_sidedefs[side1];
   sidedef_t *B = lev_sidedefs[side2];
-    
-  // immorpher: do not merge sidedefs if explicitly disabled
-  if (A->merge_side == 2 || B->merge_side == 2)
-	  return 1;
-  
-  // merge sidedefs if identical
+
+  int class1, class2, result;
+
+  // a sidedef is always the same as itself
   if (side1 == side2)
-    return (A->sector->index - B->sector->index);
+    return 0;
 
-  // immorpher: force the merger of appropriately flagged and tagged sidedefs
-  if (A->merge_side && B->merge_side && (A->tag == B->tag))
-	  return (A->sector->index - B->sector->index);
+  class1 = SidedefClass(A);
+  class2 = SidedefClass(B);
 
-  // don't merge sidedefs on special lines
-  if (A->on_special || B->on_special)
-    return side1 - side2;
+  if (class1 != class2)
+    return CompareInts(class1, class2);
 
-  if (A->sector != B->sector)
+  switch (class1)
   {
-    if (A->sector == NULL) return -1;
-    if (B->sector == NULL) return +1;
+    case SIDECLASS_FORCED:
+      // immorpher: force the merger of appropriately flagged and tagged
+      // sidedefs.  A sidedef can only belong to one sector though.
+      result = CompareInts(A->tag, B->tag);
+      if (result != 0) return result;
 
-    return (A->sector->index - B->sector->index);
+      return SidedefSectorCompare(A, B);
+
+    case SIDECLASS_UNIQUE:
+      return CompareInts(side1, side2);
   }
 
-  if ((int)A->x_offset != (int)B->x_offset)
-    return A->x_offset - (int)B->x_offset;
+  // merge sidedefs if identical
+  result = SidedefSectorCompare(A, B);
+  if (result != 0) return result;
 
-  if ((int)A->y_offset != B->y_offset)
-    return (int)A->y_offset - (int)B->y_offset;
+  result = CompareInts(A->x_offset, B->x_offset);
+  if (result != 0) return result;
+
+  result = CompareInts(A->y_offset, B->y_offset);
+  if (result != 0) return result;
 
   // compare textures
 
   //dma 3-9-2025: for doom 64
-  if(A->upper_index != B->upper_index) return 1;
-  if(A->lower_index != B->lower_index) return 1;
-  if(A->mid_index != B->mid_index) return 1;
+  result = CompareInts(A->upper_index, B->upper_index);
+  if (result != 0) return result;
 
-  // sidedefs must be the same
-  return 0;
+  result = CompareInts(A->lower_index, B->lower_index);
+  if (result != 0) return result;
+
+  return CompareInts(A->mid_index, B->mid_index);
+}
+
+// qsort() callback.  Sidedefs that can be merged end up next to each other,
+// with the lowest sidedef index first.
+static int SidedefCompare(const void *p1, const void *p2)
+{
+  int side1 = ((const uint16_g *) p1)[0];
+  int side2 = ((const uint16_g *) p2)[0];
+
+  int result = SidedefEquivCompare(side1, side2);
+
+  if (result != 0)
+    return result;
+
+  return CompareInts(side1, side2);
 }
 
 void DetectDuplicateVertices(void)
@@ -398,6 +458,57 @@ void DetectDuplicateVertices(void)
   UtilFree(array);
 }
 
+// immorpher: lines flagged "Merge Sides" share the sidedefs of the first
+// flagged line (in linedef order) that has the same tag, regardless of sector,
+// textures and offsets.  This is done per linedef (rather than comparing
+// sidedefs) so that nothing can be missed.  Must run before the generic
+// duplicate sidedef detection.
+void MergeFlaggedLineSidedefs(void)
+{
+  int i;
+  linedef_t **first = UtilCalloc(65536 * sizeof(linedef_t *));
+
+  DisplayTicker();
+
+  for (i=0; i < num_linedefs; i++)
+  {
+    linedef_t *L = lev_linedefs[i];
+    linedef_t *F;
+
+    if (! (L->specials[1] & LINEFLAG_COMB_SIDEDEF))
+      continue;
+
+    F = first[L->tag & 0xFFFF];
+
+    if (F == NULL)
+    {
+      first[L->tag & 0xFFFF] = L;
+      continue;
+    }
+
+    // only replace sides that exist on both lines, so one-sided lines
+    // do not gain a second side (or lose theirs)
+    if (L->right && F->right && L->right != F->right)
+    {
+      L->right->ref_count--;
+      L->right = F->right;
+      L->right->ref_count++;
+    }
+
+    if (L->left && F->left && L->left != F->left)
+    {
+      L->left->ref_count--;
+      L->left = F->left;
+      L->left->ref_count++;
+    }
+
+    L->self_ref = (L->left && L->right &&
+        (L->left->sector == L->right->sector));
+  }
+
+  UtilFree(first);
+}
+
 void DetectDuplicateSidedefs(void)
 {
   int i;
@@ -415,7 +526,7 @@ void DetectDuplicateSidedefs(void)
   for (i=0; i < num_sidedefs - 1; i++)
   {
     // duplicate ?
-    if (SidedefCompare(array + i, array + i+1) == 0)
+    if (SidedefEquivCompare(array[i], array[i+1]) == 0)
     {
       sidedef_t *A = lev_sidedefs[array[i]];
       sidedef_t *B = lev_sidedefs[array[i+1]];
@@ -1038,19 +1149,13 @@ vertex_t *NewVertexFromSplitSeg(seg_t *seg, float_g x, float_g y)
   VertexAddWallTip(vert, seg->pdx, seg->pdy,
       seg->partner ? seg->partner->sector : NULL, seg->sector);
 
-  // create a duplex vertex if needed
-
-  if (lev_doing_normal && cur_info->spec_version != 1)
-  {
-    vert->normal_dup = NewVertex();
-
-    vert->normal_dup->x = x;
-    vert->normal_dup->y = y;
-    vert->normal_dup->ref_count = vert->ref_count;
-
-    vert->normal_dup->index = num_normal_vert;
-    num_normal_vert++;
-  }
+  // immorpher: the duplex "normal" vertex that used to be created here is never
+  // referenced by anything for Doom 64.  NormaliseSubsector() does not switch
+  // segs over to it and RoundOffBspTree() (the only user of normal_dup) is only
+  // run for spec version 1, which never created one.  It was written out to the
+  // VERTEXES lump as an exact copy of this vertex, so every seg split wasted
+  // 8 bytes.  Not creating it also leaves more room below the 16-bit limit
+  // on vertex indices.
 
   return vert;
 }

@@ -462,6 +462,44 @@ void GetSidedefs(void)
   }
 }
 
+// immorpher: the engine swaps the texture of a sidedef when a line that has a
+// special (an action type, or a macro) and the switch texture flags is used.
+// Such a sidedef must stay unique, otherwise every line that was merged into
+// it would change texture as well.  (Note that line->type is not set for Doom 64
+// lines, which meant that on_special never got set before.)
+static int LineChangesSidedefTexture(const linedef_t *line)
+{
+  int has_special = (line->specials[2] != 0) ||
+      (line->specials[3] & 0x01);  // action type, or macro flag
+
+  return has_special &&
+      (line->flags & (LINEFLAG_DECAL_UPPER | LINEFLAG_DECAL_LOWER));
+}
+
+// immorpher: decide if the sidedef of a line may be merged with other sidedefs.
+// A sidedef can be referenced by more than one line, so the result must not depend
+// on the order the lines are read in: if any of the lines has the "Merge Sides"
+// flag the sidedef is merged using the tag of the first such line, otherwise it is
+// never merged when any of the lines are scrollers/switches/tagged lines.
+static void SetSidedefMergeInfo(sidedef_t *side, const linedef_t *line)
+{
+  if (line->specials[1] & LINEFLAG_COMB_SIDEDEF)
+  {
+    // immorpher: force the merger of sidedefs if flagged
+    if (side->merge_side != 1)
+    {
+      side->merge_side = 1;
+      side->tag = line->tag;
+    }
+  }
+  else if (side->merge_side == 0 &&
+      (line->tag != 0 || line->specials[0] & LINEFLAG_SCROLL_LEFT || line->specials[0] & LINEFLAG_SCROLL_RIGHT || line->specials[0] & LINEFLAG_SCROLL_UP || line->specials[0] & LINEFLAG_SCROLL_DOWN || line->flags & LINEFLAG_DISPLAY_UPPER || line->specials[0] & LINEFLAG_DISPLAY_LOWER))
+  {
+    // immorpher: do not merge scrollers/switches/tagged lines
+    side->merge_side = 2;
+  }
+}
+
 static INLINE_G sidedef_t *SafeLookupSidedef(uint16_g num)
 {
   if (num == 0xFFFF)
@@ -534,27 +572,15 @@ void GetLinedefs(void)
     if (line->right)
     {
       line->right->ref_count++;
-      line->right->on_special |= (line->type > 0) ? 1 : 0;
-	  line->right->tag = line->tag;
-	  // immorpher: force the merger of sidedefs if flagged
-	  if (line->specials[1] & LINEFLAG_COMB_SIDEDEF) {
-		  line->right->merge_side = 1;
-	  } else if (line->tag != 0 || line->specials[0] & LINEFLAG_SCROLL_LEFT || line->specials[0] & LINEFLAG_SCROLL_RIGHT || line->specials[0] & LINEFLAG_SCROLL_UP || line->specials[0] & LINEFLAG_SCROLL_DOWN || line->flags & LINEFLAG_DISPLAY_UPPER || line->specials[0] & LINEFLAG_DISPLAY_LOWER) { // immorpher: do not merge scrollers/switches/tagged lines
-		  line->right->merge_side = 2;
-	  }
+      line->right->on_special |= LineChangesSidedefTexture(line) ? 1 : 0;
+	  SetSidedefMergeInfo(line->right, line);
     }
 
     if (line->left)
     {
       line->left->ref_count++;
-      line->left->on_special |= (line->type > 0) ? 1 : 0;
-	  line->left->tag = line->tag;
-	  // immorpher: force the merger of sidedefs if flagged
-	  if (line->specials[1] & LINEFLAG_COMB_SIDEDEF) {
-		  line->left->merge_side = 1;
-	  } else if (line->tag != 0 || line->specials[0] & LINEFLAG_SCROLL_LEFT || line->specials[0] & LINEFLAG_SCROLL_RIGHT || line->specials[0] & LINEFLAG_SCROLL_UP || line->specials[0] & LINEFLAG_SCROLL_DOWN || line->flags & LINEFLAG_DISPLAY_UPPER || line->specials[0] & LINEFLAG_DISPLAY_LOWER) { // immorpher: do not merge scrollers/switches/tagged lines
-		  line->left->merge_side = 2;
-	  }
+      line->left->on_special |= LineChangesSidedefTexture(line) ? 1 : 0;
+	  SetSidedefMergeInfo(line->left, line);
     }
 
     line->self_ref = (line->left && line->right &&
@@ -1354,7 +1380,10 @@ void LoadLevel(void)
     // NOTE: order here is critical
 
     if (!cur_info->no_prune) // disable packing of sidedefs with no prune
+    {
+      MergeFlaggedLineSidedefs();
       DetectDuplicateSidedefs();
+    }
 
     if (cur_info->merge_vert)
       DetectDuplicateVertices();

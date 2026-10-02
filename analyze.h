@@ -26,6 +26,7 @@
 
 // detection routines
 void DetectDuplicateVertices(void);
+void MergeFlaggedLineSidedefs(void);
 void DetectDuplicateSidedefs(void);
 void DetectPolyobjSectors(void);
 void DetectOverlappingLines(void);
