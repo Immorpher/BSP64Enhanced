@@ -332,7 +332,9 @@ static void CompressBlockmap(void)
 {
   int i;
   int cur_offset;
+# if DEBUG_BLOCKMAP
   int dup_count=0;
+# endif
 
   int orig_size, new_size;
 
@@ -391,7 +393,9 @@ static void CompressBlockmap(void)
       UtilFree(block_lines[blk_num]);
       block_lines[blk_num] = NULL;
       
+# if DEBUG_BLOCKMAP
       dup_count++;
+# endif
 
       orig_size += count;
       continue;

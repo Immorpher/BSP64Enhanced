@@ -1588,7 +1588,6 @@ void ReportV5Switches(void)
 void ReportFailedLevels(void)
 {
   lump_t *cur;
-  int lev_count = 0;
 
   int fail_soft = 0;
   int fail_hard = 0;
@@ -1600,8 +1599,6 @@ void ReportFailedLevels(void)
   {
     if (! (cur->lev_info && ! (cur->lev_info->flags & LEVEL_IS_GL)))
       continue;
-
-    lev_count++;
 
     if (cur->lev_info->soft_limit != 0) fail_soft++;
     if (cur->lev_info->hard_limit != 0) fail_hard++;

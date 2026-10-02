@@ -1110,7 +1110,9 @@ static void RoundOffSubsector(subsec_t *sub)
   seg_t *last_real_degen = NULL;
 
   int real_total  = 0;
+# if DEBUG_SUBSEC
   int degen_total = 0;
+# endif
 
 # if DEBUG_SUBSEC
   PrintDebug("Subsec: Rounding off %d\n", sub->index);
@@ -1135,7 +1137,9 @@ static void RoundOffSubsector(subsec_t *sub)
       if (cur->linedef)
         last_real_degen = cur;
       
+# if DEBUG_SUBSEC
       degen_total++;
+# endif
       continue;
     }
     
