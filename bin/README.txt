@@ -50,3 +50,13 @@ Advanced Options:
   -xp -noprog        Don't show progress indicator
   -xu -noprune       Never prune linedefs or sidedefs
   -s  -skipselfref   Ignore self referencing lines
+  -xt -notrials      Build the tree once with the classic glBSP cost (see Smaller Trees)
+
+### Smaller Trees
+
+The VERTEXES, SEGS, SSECTORS, NODES and LEAFS lumps are kept as small as possible automatically, with no change to gameplay:
+
+  - Pieces of the same linedef side which end up next to each other in one subsector (and collinear minisegs) are merged back into a single seg, and vertices which are no longer referenced are not written.
+  - The BSP tree is built with partition cost presets that avoid seg splits much more strongly than the classic glBSP cost. Maps with up to 4000 linedefs try five presets and keep the one giving the smallest lumps; larger maps use the best all-round preset directly, so build times stay short.
+
+Using -c (split cost) or -f (fast) skips the preset search and uses the classic cost. -xt does the same without changing anything else.

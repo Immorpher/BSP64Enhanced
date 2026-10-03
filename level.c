@@ -734,19 +734,31 @@ void PutVertices(char *name, int do_gl)
 
   real_vert_num = count;
 
-  for (i=0; i < num_vertices; i++)
   {
-    raw_vertex_t raw;
-    vertex_t *vert = lev_vertices[i];
+    int gl_count = 0;
 
-	if(vert->index & IS_GL_VERTEX)
-	{
-		raw.x = SINT32((int)(vert->x * 65536.0));
-		raw.y = SINT32((int)(vert->y * 65536.0));
-		vert->index = real_vert_num + (vert->index & ~IS_GL_VERTEX);
+    for (i=0; i < num_vertices; i++)
+    {
+      raw_vertex_t raw;
+      vertex_t *vert = lev_vertices[i];
 
-		AppendLevelLump(lump, &raw, sizeof(raw));
-	}
+      if (! (vert->index & IS_GL_VERTEX))
+        continue;
+
+      // vertices left over after CompactBspTree() are dropped
+      if (! vert->used)
+      {
+        vert->index = 0;   // never referenced by anything written
+        continue;
+      }
+
+      raw.x = SINT32((int)(vert->x * 65536.0));
+      raw.y = SINT32((int)(vert->y * 65536.0));
+      vert->index = real_vert_num + gl_count;
+      gl_count++;
+
+      AppendLevelLump(lump, &raw, sizeof(raw));
+    }
   }
 
   /*if (count != (do_gl ? num_gl_vert : num_normal_vert))

@@ -58,6 +58,60 @@
 
 #define PRECIOUS_MULTIPLY  100
 
+// ---------------------------------------------------------------------
+// Partition cost presets (BSP64 Enhanced).
+//
+// glBSP's partition cost (tuned for software renderers, where the number
+// of splits, slime trails, etc. matter most) is rather generous with seg
+// splits.  Doom 64 stores a lot of data per seg / vertex / leaf, so the
+// best trade-off for *lump size* is to hate splits much more.  Which
+// weights win depends on the map, so BuildLevel() builds the tree with a
+// handful of presets and keeps whichever gives the smallest lumps
+// (see glbsp.c).  Preset 0 is the classic glBSP cost.
+// ---------------------------------------------------------------------
+
+typedef struct cost_preset_s
+{
+  double split;     // cost per seg split
+  double balance;   // per real seg of left/right imbalance
+  double mini;      // per miniseg of left/right imbalance
+  double near_r;    // near miss on the right side
+  double near_l;    // near miss on the left side
+  double iffy;      // split very close to a seg end
+  double diag;      // surcharge for non axis-aligned partitions
+  int    factor;    // multiplies split / near miss / iffy costs
+}
+cost_preset_t;
+
+static const cost_preset_t cost_presets[NUM_COST_PRESETS] =
+{
+  {  100.0,   100.0,   50.0, 100.0,  70.0, 140.0, 25.0, 0 },  // glBSP (factor from -c)
+
+  // The trial presets, best all-round one first.  Found by searching for
+  // the smallest lumps on a range of maps (small and very large).
+  { 6660.9,   249.7,   72.2,  16.9,   8.3,  32.4, 70.7, 15 },
+  { 8332.4,   110.2,  121.9,  78.4,  54.8, 140.0, 25.0, 11 },
+  { 3000.0,    50.0,   30.0,  50.0,  20.0, 100.0, 25.0, 11 },
+  {100000.0,   25.0,    0.0,   0.0,   0.0,   0.0, 25.0, 11 },
+  {100000.0,    1.0,    0.0,   0.0,   0.0,   0.0,  0.0, 11 }
+};
+
+static cost_preset_t cur_cost;
+
+void SetCostPreset(int index)
+{
+  cur_cost = cost_presets[index];
+
+  if (index == 0 || cur_cost.factor <= 0)
+    cur_cost.factor = cur_info->factor;
+}
+
+#define ADD_COST(v)  \
+  do {  \
+    double t_ = (double) info->cost + (double) (v);  \
+    info->cost = (t_ > 2000000000.0) ? 2000000000 : (int) t_;  \
+  } while (0)
+
 #define SEG_FAST_THRESHHOLD  200
 
 
@@ -344,7 +398,7 @@ static int EvalPartitionWorker(superblock_t *seg_list, seg_t *part,
   float_g a, b, fa, fb;
 
   int num;
-  int factor = cur_info->factor;
+  int factor = cur_cost.factor;
 
   // -AJA- this is the heart of my superblock idea, it tests the
   //       _whole_ block against the partition line to quickly handle
@@ -435,7 +489,7 @@ static int EvalPartitionWorker(superblock_t *seg_list, seg_t *part,
     if (fa <= DIST_EPSILON || fb <= DIST_EPSILON)
     {
       if (check->linedef && check->linedef->is_precious)
-        info->cost += 40 * factor * PRECIOUS_MULTIPLY;
+        ADD_COST(0.4 * cur_cost.split * factor * PRECIOUS_MULTIPLY);
     }
 
     /* check for right side */
@@ -463,7 +517,7 @@ static int EvalPartitionWorker(superblock_t *seg_list, seg_t *part,
       else
         qnty = IFFY_LEN / MIN(a, b);
 
-      info->cost += (int) (100 * factor * (qnty * qnty - 1.0));
+      ADD_COST(cur_cost.near_r * factor * (qnty * qnty - 1.0));
       continue;
     }
 
@@ -488,7 +542,7 @@ static int EvalPartitionWorker(superblock_t *seg_list, seg_t *part,
       else
         qnty = IFFY_LEN / -MAX(a, b);
 
-      info->cost += (int) (70 * factor * (qnty * qnty - 1.0));
+      ADD_COST(cur_cost.near_l * factor * (qnty * qnty - 1.0));
       continue;
     }
 
@@ -503,9 +557,9 @@ static int EvalPartitionWorker(superblock_t *seg_list, seg_t *part,
     // lifts/stairs from being messed up accidentally by splits.
 
     if (check->linedef && check->linedef->is_precious)
-      info->cost += 100 * factor * PRECIOUS_MULTIPLY;
+      ADD_COST(cur_cost.split * factor * PRECIOUS_MULTIPLY);
     else
-      info->cost += 100 * factor;
+      ADD_COST(cur_cost.split * factor);
 
     // -AJA- check if the split point is very close to one end, which
     //       is quite an undesirable situation (producing really short
@@ -519,7 +573,7 @@ static int EvalPartitionWorker(superblock_t *seg_list, seg_t *part,
 
       // the closer to the end, the higher the cost
       qnty = IFFY_LEN / MIN(fa, fb);
-      info->cost += (int) (140 * factor * (qnty * qnty - 1.0));
+      ADD_COST(cur_cost.iffy * factor * (qnty * qnty - 1.0));
     }
   }
 
@@ -580,19 +634,29 @@ static int EvalPartition(superblock_t *seg_list, seg_t *part,
   }
 
   /* increase cost by the difference between left & right */
-  info.cost += 100 * abs(info.real_left - info.real_right);
+  {
+    eval_info_t *pi = &info;
+    double v = cur_cost.balance * abs(info.real_left - info.real_right);
+    double t = (double) pi->cost + v;
+    pi->cost = (t > 2000000000.0) ? 2000000000 : (int) t;
+  }
 
   // -AJA- allow miniseg counts to affect the outcome, but only to a
   //       lesser degree than real segs.
   
-  info.cost += 50 * abs(info.mini_left - info.mini_right);
+  {
+    eval_info_t *pi = &info;
+    double v = cur_cost.mini * abs(info.mini_left - info.mini_right);
+    double t = (double) pi->cost + v;
+    pi->cost = (t > 2000000000.0) ? 2000000000 : (int) t;
+  }
 
   // -AJA- Another little twist, here we show a slight preference for
   //       partition lines that lie either purely horizontally or
   //       purely vertically.
   
   if (part->pdx != 0 && part->pdy != 0)
-    info.cost += 25;
+    info.cost += (int) cur_cost.diag;
 
 # if DEBUG_PICKNODE
   PrintDebug("Eval %p: splits=%d iffy=%d near=%d left=%d+%d right=%d+%d "
@@ -673,10 +737,10 @@ static seg_t *FindFastSeg(superblock_t *seg_list, const bbox_t *bbox)
   int V_cost = -1;
 
   if (best_H)
-    H_cost = EvalPartition(seg_list, best_H, 99999999);
+    H_cost = EvalPartition(seg_list, best_H, INT_MAX);
 
   if (best_V)
-    V_cost = EvalPartition(seg_list, best_V, 99999999);
+    V_cost = EvalPartition(seg_list, best_V, INT_MAX);
 
 # if DEBUG_PICKNODE
   PrintDebug("FindFastSeg: best_H=%p (cost %d) | best_V=%p (cost %d)\n",

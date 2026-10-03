@@ -112,6 +112,8 @@ typedef struct nodebuildinfo_s
   boolean_g merge_vert;
   boolean_g skip_self_ref;
   boolean_g window_fx;
+  boolean_g no_trials;      // build only once, with the classic cost
+  boolean_g factor_given;   // -c was used (implies no_trials)
 
   int block_limit;
 

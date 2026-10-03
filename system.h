@@ -47,6 +47,9 @@ void FatalError(const char *str, ...) GCCATTR((format (printf, 1, 2)));
 void InternalError(const char *str, ...) GCCATTR((format (printf, 1, 2)));
 
 // display normal messages & warnings to the screen
+// non-zero while trial builds run: suppresses messages and warnings
+extern int trial_mute;
+
 void PrintMsg(const char *str, ...) GCCATTR((format (printf, 1, 2)));
 void PrintVerbose(const char *str, ...) GCCATTR((format (printf, 1, 2)));
 void PrintWarn(const char *str, ...) GCCATTR((format (printf, 1, 2)));

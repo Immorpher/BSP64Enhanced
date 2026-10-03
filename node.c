@@ -1101,6 +1101,216 @@ void NormaliseBspTree(node_t *root)
   }
 }
 
+
+//
+// CompactBspTree
+//
+// Doom 64's own node builder never splits the back seg of a two-sided
+// linedef just because the *front* seg was split by a partition line
+// that lives in a different branch of the tree.  glBSP does (the
+// "partner" split is required for watertight GL subsectors), and this
+// leaves many segs of one linedef sitting side by side in the very same
+// subsector, joined by a vertex that no longer serves any purpose.  The
+// same thing happens to the minisegs along a partition line.
+//
+// Here every run of consecutive segs inside a subsector that continue
+// one another in a straight line is merged back into a single seg
+// (for real segs: same linedef and same side; for minisegs: collinear).
+// Vertices that become unreferenced are afterwards left out of the
+// VERTEXES lump (see PutVertices).
+//
+
+int compact_stat_segs  = 0;
+int compact_stat_minis = 0;
+int compact_stat_verts = 0;
+
+#define COMPACT_EPS  (1.0 / 128.0)
+
+static int CompactCanMerge(seg_t *a, seg_t *b)
+{
+  double dx, dy, len, dist, dot;
+
+  // they must be joined end to start
+  if (a->end != b->start)
+    return FALSE;
+
+  if (a->linedef || b->linedef)
+  {
+    // real segs: must be pieces of the very same side of a linedef
+    return (a->linedef == b->linedef && a->side == b->side);
+  }
+
+  // two minisegs: merge when the middle vertex lies on the straight
+  // line from a's start to b's end (and we do not double back).
+  dx  = b->end->x - a->start->x;
+  dy  = b->end->y - a->start->y;
+  len = sqrt(dx*dx + dy*dy);
+
+  if (len < COMPACT_EPS)
+    return FALSE;
+
+  dist = ((a->end->x - a->start->x) * dy - (a->end->y - a->start->y) * dx) / len;
+
+  if (fabs(dist) > COMPACT_EPS)
+    return FALSE;
+
+  dot = (a->end->x - a->start->x) * dx + (a->end->y - a->start->y) * dy;
+
+  if (dot <= 0)
+    return FALSE;
+
+  dot = (b->end->x - b->start->x) * dx + (b->end->y - b->start->y) * dy;
+
+  return (dot > 0);
+}
+
+static void CompactDrop(seg_t *seg)
+{
+  // never written: PutSegs() skips minisegs and degenerates, and the
+  // huge index sorts it behind every real seg.
+  seg->degenerate = 1;
+  seg->index = 1 << 24;
+  seg->next = NULL;
+}
+
+static void CompactSubsector(subsec_t *sub)
+{
+  seg_t **in, **out;
+  seg_t *cur;
+  int n = 0, m = 0, i;
+
+  for (cur=sub->seg_list; cur; cur=cur->next)
+    n++;
+
+  if (n < 4)
+    return;
+
+  in  = (seg_t **) UtilCalloc(2 * n * sizeof(seg_t *));
+  out = in + n;
+
+  for (cur=sub->seg_list, i=0; cur; cur=cur->next)
+    in[i++] = cur;
+
+  for (i=0; i < n; i++)
+  {
+    seg_t *a = in[i];
+
+    if (m > 0 && CompactCanMerge(out[m-1], a))
+    {
+      if (a->linedef) compact_stat_segs++; else compact_stat_minis++;
+
+      out[m-1]->end = a->end;
+      RecomputeSeg(out[m-1]);
+      CompactDrop(a);
+      continue;
+    }
+
+    out[m++] = a;
+  }
+
+  // the list is a closed loop: the last piece may continue the first
+  if (m > 3 && CompactCanMerge(out[m-1], out[0]))
+  {
+    if (out[0]->linedef) compact_stat_segs++; else compact_stat_minis++;
+
+    out[m-1]->end = out[0]->end;
+    RecomputeSeg(out[m-1]);
+    CompactDrop(out[0]);
+
+    for (i=1; i < m; i++)
+      out[i-1] = out[i];
+
+    m--;
+  }
+
+  if (m < n)
+  {
+    for (i=0; i < m-1; i++)
+      out[i]->next = out[i+1];
+
+    out[m-1]->next = NULL;
+    sub->seg_list = out[0];
+    sub->seg_count = m;
+  }
+
+  UtilFree(in);
+}
+
+//
+// ComputeTreeScore
+//
+// Estimate (in bytes) the size of the lumps that depend on the shape of
+// the BSP tree: VERTEXES (new vertices only), SEGS (weighted double),
+// SSECTORS, NODES and LEAFS.  Used to compare trial builds.  Call after CompactBspTree().
+//
+long ComputeTreeScore(void)
+{
+  long score = 0;
+  int i;
+
+  for (i=0; i < num_vertices; i++)
+  {
+    vertex_t *v = LookupVertex(i);
+
+    if ((v->index & IS_GL_VERTEX) && v->used)
+      score += sizeof(raw_vertex_t);
+  }
+
+  for (i=0; i < num_subsecs; i++)
+  {
+    subsec_t *sub = LookupSubsec(i);
+    seg_t *seg;
+
+    score += sizeof(raw_subsec_t) + 2;
+
+    for (seg=sub->seg_list; seg; seg=seg->next)
+    {
+      score += 4;   // LEAFS entry
+
+      // segs are counted double: besides their bytes, every seg costs
+      // time when the level is rendered and collided against
+      if (seg->linedef && !seg->degenerate)
+        score += 2 * sizeof(raw_seg_t);
+    }
+  }
+
+  score += (long) num_nodes * 28;
+
+  return score;
+}
+
+void CompactBspTree(node_t *root)
+{
+  int i;
+  seg_t *seg;
+
+  (void) root;
+
+  DisplayTicker();
+
+  for (i=0; i < num_vertices; i++)
+    LookupVertex(i)->used = 0;
+
+  for (i=0; i < num_subsecs; i++)
+    CompactSubsector(LookupSubsec(i));
+
+  for (i=0; i < num_vertices; i++)
+    LookupVertex(i)->used = 0;
+
+  // (new vertices are not in lev_vertices as a flat list in every
+  // configuration, so mark through the subsectors rather than counting)
+  for (i=0; i < num_subsecs; i++)
+  {
+    subsec_t *sub = LookupSubsec(i);
+
+    for (seg=sub->seg_list; seg; seg=seg->next)
+    {
+      seg->start->used = 1;
+      seg->end->used = 1;
+    }
+  }
+}
+
 static void RoundOffSubsector(subsec_t *sub)
 {
   seg_t *new_head = NULL;

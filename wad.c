@@ -913,7 +913,14 @@ static void WriteDirEntry(lump_t *lump)
 
   DisplayTicker();
 
-  memcpy(entry.name, lump->name, 8);
+  // lump names are NUL terminated strings which may be shorter than 8
+  // chars: copy only the string and zero-pad (do not read past it).
+  {
+    size_t nlen = strlen(lump->name);
+
+    memset(entry.name, 0, sizeof(entry.name));
+    memcpy(entry.name, lump->name, (nlen < 8) ? nlen : 8);
+  }
 
   entry.start  = UINT32(lump->new_start);
   entry.length = UINT32(lump->length);

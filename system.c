@@ -76,12 +76,17 @@ void InternalError(const char *str, ...)
   (* cur_funcs->fatal_error)("\nINTERNAL ERROR: *** %s ***\n\n", message_buf);
 }
 
+int trial_mute = 0;
+
 //
 // PrintMsg
 //
 void PrintMsg(const char *str, ...)
 {
   va_list args;
+
+  if (trial_mute)
+    return;
 
   va_start(args, str);
   _vsnprintf(message_buf, sizeof(message_buf), str, args);
@@ -100,6 +105,9 @@ void PrintMsg(const char *str, ...)
 void PrintVerbose(const char *str, ...)
 {
   va_list args;
+
+  if (trial_mute)
+    return;
 
   va_start(args, str);
   _vsnprintf(message_buf, sizeof(message_buf), str, args);
@@ -120,6 +128,9 @@ void PrintWarn(const char *str, ...)
 {
   va_list args;
 
+  if (trial_mute)
+    return;
+
   va_start(args, str);
   _vsnprintf(message_buf, sizeof(message_buf), str, args);
   va_end(args);
@@ -139,6 +150,9 @@ void PrintWarn(const char *str, ...)
 void PrintMiniWarn(const char *str, ...)
 {
   va_list args;
+
+  if (trial_mute)
+    return;
 
   va_start(args, str);
   _vsnprintf(message_buf, sizeof(message_buf), str, args);

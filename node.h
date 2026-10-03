@@ -82,4 +82,15 @@ void RoundOffBspTree(node_t *root);
 void FreeQuickAllocSupers(void);
 
 
+// merge redundant pieces of segs and collinear minisegs inside each
+// subsector (created only because of partner splitting for GL nodes),
+// then flag the vertices which are still referenced.  This must run
+// after ClockwiseBspTree() and before the lumps are saved.
+void CompactBspTree(node_t *root);
+
+// estimated byte size of the tree dependent lumps (for trial builds)
+long ComputeTreeScore(void);
+
+extern int compact_stat_segs, compact_stat_minis, compact_stat_verts;
+
 #endif /* __GLBSP_NODE_H__ */

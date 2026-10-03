@@ -1,0 +1,802 @@
+diff -ruN a/README.md b/README.md
+--- a/README.md	2026-10-02 21:57:39.448209295 -0400
++++ b/README.md	2026-10-02 21:57:39.451211901 -0400
+@@ -26,6 +26,15 @@
+ 
+ Special lines are line definitions that contain a special (actions, macros, and switch properties), have a non-zero tag, border sectors with differing tags, or use any flags which specifically block movement (one-sided, block projectiles, block monsters, and ect...). These special lines are excluded from edge compression, thus any of these properties can be added to any line (or a tag to a sector) where you may not want enemies or players being able to approach closely to.
+ 
++### Smaller Trees
++
++The `VERTEXES`, `SEGS`, `SSECTORS`, `NODES` and `LEAFS` lumps are kept as small as possible automatically, with no change to gameplay:
++
+++ Pieces of the same linedef side which end up next to each other in one subsector (and collinear minisegs) are merged back into a single seg, and vertices which are no longer referenced are not written.
+++ The BSP tree is built with partition cost presets that avoid seg splits much more strongly than the classic glBSP cost. Maps with up to 4000 linedefs try five presets and keep the one giving the smallest lumps; larger maps use the best all-round preset directly, so build times stay short.
++
++Using `-c` (split cost) or `-f` (fast) skips the preset search and uses the classic cost. `-xt` does the same without changing anything else.
++
+ ### Command-line Commands
+ 
+ These additional options can be added to the nodebuilder configurations of the "BSP64Enhanced.cfg" file or they can be used when running the nodebuilder from command-line.
+@@ -50,6 +59,7 @@
+ +  -xp -noprog        Don't show progress indicator
+ +  -xu -noprune       Never prune linedefs or sidedefs
+ +  -s  -skipselfref   Ignore self referencing lines
+++  -xt -notrials      Build the tree once with the classic glBSP cost (see Smaller Trees)
+ 
+ ## Building
+ 
+diff -ruN a/bin/README.txt b/bin/README.txt
+--- a/bin/README.txt	2026-10-02 21:57:39.448336790 -0400
++++ b/bin/README.txt	2026-10-02 21:57:39.450721885 -0400
+@@ -26,6 +26,15 @@
+ 
+ Special lines are line definitions that contain a special (actions, macros, and switch properties), have a non-zero tag, border sectors with differing tags, or use any flags which specifically block movement (one-sided, block projectiles, block monsters, and ect...). These special lines are excluded from edge compression, thus any of these properties can be added to any line (or a tag to a sector) where you may not want enemies or players being able to approach closely to.
+ 
++### Smaller Trees
++
++The VERTEXES, SEGS, SSECTORS, NODES and LEAFS lumps are kept as small as possible automatically, with no change to gameplay:
++
++  - Pieces of the same linedef side which end up next to each other in one subsector (and collinear minisegs) are merged back into a single seg, and vertices which are no longer referenced are not written.
++  - The BSP tree is built with partition cost presets that avoid seg splits much more strongly than the classic glBSP cost. Maps with up to 4000 linedefs try five presets and keep the one giving the smallest lumps; larger maps use the best all-round preset directly, so build times stay short.
++
++Using -c (split cost) or -f (fast) skips the preset search and uses the classic cost. -xt does the same without changing anything else.
++
+ ### Command-line Commands
+ 
+ These additional options can be added to the nodebuilder configurations of the "BSP64Enhanced.cfg" file or they can be used when running the nodebuilder from command-line.
+@@ -49,4 +58,5 @@
+   -xn -nonormal      Don't add (if missing) the normal nodes
+   -xp -noprog        Don't show progress indicator
+   -xu -noprune       Never prune linedefs or sidedefs
+-  -s  -skipselfref   Ignore self referencing lines
+\ No newline at end of file
++  -s  -skipselfref   Ignore self referencing lines
++  -xt -notrials      Build the tree once with the classic glBSP cost (see Smaller Trees)
+\ No newline at end of file
+diff -ruN a/glbsp.c b/glbsp.c
+--- a/glbsp.c	2026-10-02 21:57:39.448411513 -0400
++++ b/glbsp.c	2026-10-02 21:57:39.450755443 -0400
+@@ -73,6 +73,8 @@
+   FALSE,   // merge_vert
+   FALSE,   // skip_self_ref
+   FALSE,   // window_fx
++  FALSE,   // no_trials
++  FALSE,   // factor_given
+ 
+   DEFAULT_BLOCK_LIMIT,   // block_limit
+ 
+@@ -235,6 +237,7 @@
+       }
+ 
+       info->factor = (int) strtol(argv[1], NULL, 10);
++      info->factor_given = TRUE;
+ 
+       argv += 2; argc -= 2;
+       continue;
+@@ -278,6 +281,7 @@
+     HANDLE_BOOLEAN2("y",  "windowfx",    window_fx)
+     HANDLE_BOOLEAN2("s",  "skipselfref", skip_self_ref)
+     HANDLE_BOOLEAN2("xu", "noprune",     no_prune)
++    HANDLE_BOOLEAN2("xt", "notrials",    no_trials)
+     HANDLE_BOOLEAN2("xn", "nonormal",    no_normal)
+ 
+     // to err is human...
+@@ -422,7 +426,10 @@
+ 
+ /* ----- build nodes for a single level --------------------------- */
+ 
+-static glbsp_ret_e HandleLevel(void)
++// Builds the level once with the given cost preset.  When 'final' is
++// FALSE nothing is written: the estimated size of the tree dependent
++// lumps is returned in *score instead.
++static glbsp_ret_e BuildLevelOnce(int preset, int final, long *score)
+ {
+   superblock_t *seg_list;
+   bbox_t seg_bbox;
+@@ -434,6 +441,8 @@
+   if (cur_comms->cancelled)
+     return GLBSP_E_Cancelled;
+ 
++  trial_mute = (final ? 0 : 1);
++
+   DisplaySetBarLimit(1, 1000);
+   DisplaySetBar(1, 0);
+ 
+@@ -443,6 +452,8 @@
+ 
+   InitBlockmap();
+ 
++  SetCostPreset(preset);
++
+   // create initial segs
+   seg_list = CreateSegs();
+ 
+@@ -455,25 +466,90 @@
+   if (ret == GLBSP_E_OK)
+   {
+     ClockwiseBspTree(root_node);
++    CompactBspTree(root_node);
+ 
+-    PrintVerbose("Built %d NODES, %d SSECTORS, %d SEGS, %d VERTEXES\n",
+-        num_nodes, num_subsecs, num_segs, num_normal_vert + num_gl_vert);
++    if (! final)
++    {
++      *score = ComputeTreeScore();
++    }
++    else
++    {
++      PrintVerbose("Built %d NODES, %d SSECTORS, %d SEGS, %d VERTEXES\n",
++          num_nodes, num_subsecs, num_segs, num_normal_vert + num_gl_vert);
+ 
+-    if (root_node)
+-      PrintVerbose("Heights of left and right subtrees = (%d,%d)\n",
+-          ComputeBspHeight(root_node->r.node),
+-          ComputeBspHeight(root_node->l.node));
++      if (root_node)
++        PrintVerbose("Heights of left and right subtrees = (%d,%d)\n",
++            ComputeBspHeight(root_node->r.node),
++            ComputeBspHeight(root_node->l.node));
+ 
+-    SaveLevel(root_node);
++      SaveLevel(root_node);
++    }
+   }
+ 
+   FreeLevel();
+   FreeQuickAllocCuts();
+   FreeQuickAllocSupers();
+ 
++  trial_mute = 0;
++
+   return ret;
+ }
+ 
++// Levels with more linedefs than this only use the first (best all-round)
++// preset: it gave the smallest lumps on every large map tested, while
++// each extra trial costs several seconds there.
++#define TRIALS_LINEDEF_LIMIT  4000
++
++static glbsp_ret_e HandleLevel(void)
++{
++  glbsp_ret_e ret;
++
++  int best_preset = 0;
++
++  // Unless the user picked a split cost with -c (or asked for -fast or
++  // -notrials), the tree is built with the trial cost presets, and the
++  // preset which yields the smallest VERTEXES + SEGS + SSECTORS + NODES +
++  // LEAFS is used for the real build.
++  if (! cur_info->no_trials && ! cur_info->factor_given && ! cur_info->fast)
++  {
++    const lump_t *lines = FindLevelLump("LINEDEFS");
++    int num_lines = lines ? (lines->length / 16) : 0;
++    int last = (num_lines > TRIALS_LINEDEF_LIMIT) ? 1 : (NUM_COST_PRESETS - 1);
++
++    best_preset = 1;
++
++    if (last > 1)
++    {
++      long best_score = 0;
++      int i;
++
++      int saved_small = cur_comms->total_small_warn;
++      int saved_big   = cur_comms->total_big_warn;
++
++      for (i=1; i <= last; i++)
++      {
++        long score = 0;
++
++        ret = BuildLevelOnce(i, FALSE, &score);
++
++        if (ret != GLBSP_E_OK)
++          return ret;
++
++        if (i == 1 || score < best_score)
++        {
++          best_score  = score;
++          best_preset = i;
++        }
++      }
++
++      cur_comms->total_small_warn = saved_small;
++      cur_comms->total_big_warn   = saved_big;
++    }
++  }
++
++  return BuildLevelOnce(best_preset, TRUE, NULL);
++}
++
+ 
+ /* ----- main routine -------------------------------------- */
+ 
+diff -ruN a/glbsp.h b/glbsp.h
+--- a/glbsp.h	2026-10-02 21:57:39.448427635 -0400
++++ b/glbsp.h	2026-10-02 21:57:39.450853062 -0400
+@@ -112,6 +112,8 @@
+   boolean_g merge_vert;
+   boolean_g skip_self_ref;
+   boolean_g window_fx;
++  boolean_g no_trials;      // build only once, with the classic cost
++  boolean_g factor_given;   // -c was used (implies no_trials)
+ 
+   int block_limit;
+ 
+diff -ruN a/level.c b/level.c
+--- a/level.c	2026-10-02 21:57:39.448443671 -0400
++++ b/level.c	2026-10-02 21:57:39.450874218 -0400
+@@ -734,19 +734,31 @@
+ 
+   real_vert_num = count;
+ 
+-  for (i=0; i < num_vertices; i++)
+   {
+-    raw_vertex_t raw;
+-    vertex_t *vert = lev_vertices[i];
++    int gl_count = 0;
+ 
+-	if(vert->index & IS_GL_VERTEX)
+-	{
+-		raw.x = SINT32((int)(vert->x * 65536.0));
+-		raw.y = SINT32((int)(vert->y * 65536.0));
+-		vert->index = real_vert_num + (vert->index & ~IS_GL_VERTEX);
++    for (i=0; i < num_vertices; i++)
++    {
++      raw_vertex_t raw;
++      vertex_t *vert = lev_vertices[i];
+ 
+-		AppendLevelLump(lump, &raw, sizeof(raw));
+-	}
++      if (! (vert->index & IS_GL_VERTEX))
++        continue;
++
++      // vertices left over after CompactBspTree() are dropped
++      if (! vert->used)
++      {
++        vert->index = 0;   // never referenced by anything written
++        continue;
++      }
++
++      raw.x = SINT32((int)(vert->x * 65536.0));
++      raw.y = SINT32((int)(vert->y * 65536.0));
++      vert->index = real_vert_num + gl_count;
++      gl_count++;
++
++      AppendLevelLump(lump, &raw, sizeof(raw));
++    }
+   }
+ 
+   /*if (count != (do_gl ? num_gl_vert : num_normal_vert))
+diff -ruN a/level.h b/level.h
+--- a/level.h	2026-10-02 21:57:39.448470226 -0400
++++ b/level.h	2026-10-02 21:57:39.450899963 -0400
+@@ -74,6 +74,11 @@
+   // for the normal segs).  Normally NULL.  Note: the wall tips on
+   // this vertex are not created.
+   struct vertex_s *normal_dup;
++
++  // set by CompactBspTree() when a vertex is still referenced by a
++  // seg or leaf of the finished tree.  Unreferenced split vertices are
++  // not written to the VERTEXES lump.
++  int used;
+ }
+ vertex_t;
+ 
+diff -ruN a/main.c b/main.c
+--- a/main.c	2026-10-02 21:57:39.448493968 -0400
++++ b/main.c	2026-10-02 21:57:39.450916916 -0400
+@@ -101,6 +101,7 @@
+     "  -xp -noprog        Don't show progress indicator\n"
+     "  -xu -noprune       Never prune linedefs or sidedefs\n"
+ 	"  -s  -skipselfref   Ignore self referencing lines\n"
++    "  -xt -notrials      Build the tree once with the classic cost\n"
+   );
+ }
+ 
+diff -ruN a/node.c b/node.c
+--- a/node.c	2026-10-02 21:57:39.448540548 -0400
++++ b/node.c	2026-10-02 21:57:39.450936538 -0400
+@@ -1101,6 +1101,216 @@
+   }
+ }
+ 
++
++//
++// CompactBspTree
++//
++// Doom 64's own node builder never splits the back seg of a two-sided
++// linedef just because the *front* seg was split by a partition line
++// that lives in a different branch of the tree.  glBSP does (the
++// "partner" split is required for watertight GL subsectors), and this
++// leaves many segs of one linedef sitting side by side in the very same
++// subsector, joined by a vertex that no longer serves any purpose.  The
++// same thing happens to the minisegs along a partition line.
++//
++// Here every run of consecutive segs inside a subsector that continue
++// one another in a straight line is merged back into a single seg
++// (for real segs: same linedef and same side; for minisegs: collinear).
++// Vertices that become unreferenced are afterwards left out of the
++// VERTEXES lump (see PutVertices).
++//
++
++int compact_stat_segs  = 0;
++int compact_stat_minis = 0;
++int compact_stat_verts = 0;
++
++#define COMPACT_EPS  (1.0 / 128.0)
++
++static int CompactCanMerge(seg_t *a, seg_t *b)
++{
++  double dx, dy, len, dist, dot;
++
++  // they must be joined end to start
++  if (a->end != b->start)
++    return FALSE;
++
++  if (a->linedef || b->linedef)
++  {
++    // real segs: must be pieces of the very same side of a linedef
++    return (a->linedef == b->linedef && a->side == b->side);
++  }
++
++  // two minisegs: merge when the middle vertex lies on the straight
++  // line from a's start to b's end (and we do not double back).
++  dx  = b->end->x - a->start->x;
++  dy  = b->end->y - a->start->y;
++  len = sqrt(dx*dx + dy*dy);
++
++  if (len < COMPACT_EPS)
++    return FALSE;
++
++  dist = ((a->end->x - a->start->x) * dy - (a->end->y - a->start->y) * dx) / len;
++
++  if (fabs(dist) > COMPACT_EPS)
++    return FALSE;
++
++  dot = (a->end->x - a->start->x) * dx + (a->end->y - a->start->y) * dy;
++
++  if (dot <= 0)
++    return FALSE;
++
++  dot = (b->end->x - b->start->x) * dx + (b->end->y - b->start->y) * dy;
++
++  return (dot > 0);
++}
++
++static void CompactDrop(seg_t *seg)
++{
++  // never written: PutSegs() skips minisegs and degenerates, and the
++  // huge index sorts it behind every real seg.
++  seg->degenerate = 1;
++  seg->index = 1 << 24;
++  seg->next = NULL;
++}
++
++static void CompactSubsector(subsec_t *sub)
++{
++  seg_t **in, **out;
++  seg_t *cur;
++  int n = 0, m = 0, i;
++
++  for (cur=sub->seg_list; cur; cur=cur->next)
++    n++;
++
++  if (n < 4)
++    return;
++
++  in  = (seg_t **) UtilCalloc(2 * n * sizeof(seg_t *));
++  out = in + n;
++
++  for (cur=sub->seg_list, i=0; cur; cur=cur->next)
++    in[i++] = cur;
++
++  for (i=0; i < n; i++)
++  {
++    seg_t *a = in[i];
++
++    if (m > 0 && CompactCanMerge(out[m-1], a))
++    {
++      if (a->linedef) compact_stat_segs++; else compact_stat_minis++;
++
++      out[m-1]->end = a->end;
++      RecomputeSeg(out[m-1]);
++      CompactDrop(a);
++      continue;
++    }
++
++    out[m++] = a;
++  }
++
++  // the list is a closed loop: the last piece may continue the first
++  if (m > 3 && CompactCanMerge(out[m-1], out[0]))
++  {
++    if (out[0]->linedef) compact_stat_segs++; else compact_stat_minis++;
++
++    out[m-1]->end = out[0]->end;
++    RecomputeSeg(out[m-1]);
++    CompactDrop(out[0]);
++
++    for (i=1; i < m; i++)
++      out[i-1] = out[i];
++
++    m--;
++  }
++
++  if (m < n)
++  {
++    for (i=0; i < m-1; i++)
++      out[i]->next = out[i+1];
++
++    out[m-1]->next = NULL;
++    sub->seg_list = out[0];
++    sub->seg_count = m;
++  }
++
++  UtilFree(in);
++}
++
++//
++// ComputeTreeScore
++//
++// Estimate (in bytes) the size of the lumps that depend on the shape of
++// the BSP tree: VERTEXES (new vertices only), SEGS (weighted double),
++// SSECTORS, NODES and LEAFS.  Used to compare trial builds.  Call after CompactBspTree().
++//
++long ComputeTreeScore(void)
++{
++  long score = 0;
++  int i;
++
++  for (i=0; i < num_vertices; i++)
++  {
++    vertex_t *v = LookupVertex(i);
++
++    if ((v->index & IS_GL_VERTEX) && v->used)
++      score += sizeof(raw_vertex_t);
++  }
++
++  for (i=0; i < num_subsecs; i++)
++  {
++    subsec_t *sub = LookupSubsec(i);
++    seg_t *seg;
++
++    score += sizeof(raw_subsec_t) + 2;
++
++    for (seg=sub->seg_list; seg; seg=seg->next)
++    {
++      score += 4;   // LEAFS entry
++
++      // segs are counted double: besides their bytes, every seg costs
++      // time when the level is rendered and collided against
++      if (seg->linedef && !seg->degenerate)
++        score += 2 * sizeof(raw_seg_t);
++    }
++  }
++
++  score += (long) num_nodes * 28;
++
++  return score;
++}
++
++void CompactBspTree(node_t *root)
++{
++  int i;
++  seg_t *seg;
++
++  (void) root;
++
++  DisplayTicker();
++
++  for (i=0; i < num_vertices; i++)
++    LookupVertex(i)->used = 0;
++
++  for (i=0; i < num_subsecs; i++)
++    CompactSubsector(LookupSubsec(i));
++
++  for (i=0; i < num_vertices; i++)
++    LookupVertex(i)->used = 0;
++
++  // (new vertices are not in lev_vertices as a flat list in every
++  // configuration, so mark through the subsectors rather than counting)
++  for (i=0; i < num_subsecs; i++)
++  {
++    subsec_t *sub = LookupSubsec(i);
++
++    for (seg=sub->seg_list; seg; seg=seg->next)
++    {
++      seg->start->used = 1;
++      seg->end->used = 1;
++    }
++  }
++}
++
+ static void RoundOffSubsector(subsec_t *sub)
+ {
+   seg_t *new_head = NULL;
+diff -ruN a/node.h b/node.h
+--- a/node.h	2026-10-02 21:57:39.448613147 -0400
++++ b/node.h	2026-10-02 21:57:39.450958937 -0400
+@@ -82,4 +82,15 @@
+ void FreeQuickAllocSupers(void);
+ 
+ 
++// merge redundant pieces of segs and collinear minisegs inside each
++// subsector (created only because of partner splitting for GL nodes),
++// then flag the vertices which are still referenced.  This must run
++// after ClockwiseBspTree() and before the lumps are saved.
++void CompactBspTree(node_t *root);
++
++// estimated byte size of the tree dependent lumps (for trial builds)
++long ComputeTreeScore(void);
++
++extern int compact_stat_segs, compact_stat_minis, compact_stat_verts;
++
+ #endif /* __GLBSP_NODE_H__ */
+diff -ruN a/seg.c b/seg.c
+--- a/seg.c	2026-10-02 21:57:39.448663139 -0400
++++ b/seg.c	2026-10-02 21:57:39.450975207 -0400
+@@ -58,6 +58,60 @@
+ 
+ #define PRECIOUS_MULTIPLY  100
+ 
++// ---------------------------------------------------------------------
++// Partition cost presets (BSP64 Enhanced).
++//
++// glBSP's partition cost (tuned for software renderers, where the number
++// of splits, slime trails, etc. matter most) is rather generous with seg
++// splits.  Doom 64 stores a lot of data per seg / vertex / leaf, so the
++// best trade-off for *lump size* is to hate splits much more.  Which
++// weights win depends on the map, so BuildLevel() builds the tree with a
++// handful of presets and keeps whichever gives the smallest lumps
++// (see glbsp.c).  Preset 0 is the classic glBSP cost.
++// ---------------------------------------------------------------------
++
++typedef struct cost_preset_s
++{
++  double split;     // cost per seg split
++  double balance;   // per real seg of left/right imbalance
++  double mini;      // per miniseg of left/right imbalance
++  double near_r;    // near miss on the right side
++  double near_l;    // near miss on the left side
++  double iffy;      // split very close to a seg end
++  double diag;      // surcharge for non axis-aligned partitions
++  int    factor;    // multiplies split / near miss / iffy costs
++}
++cost_preset_t;
++
++static const cost_preset_t cost_presets[NUM_COST_PRESETS] =
++{
++  {  100.0,   100.0,   50.0, 100.0,  70.0, 140.0, 25.0, 0 },  // glBSP (factor from -c)
++
++  // The trial presets, best all-round one first.  Found by searching for
++  // the smallest lumps on a range of maps (small and very large).
++  { 6660.9,   249.7,   72.2,  16.9,   8.3,  32.4, 70.7, 15 },
++  { 8332.4,   110.2,  121.9,  78.4,  54.8, 140.0, 25.0, 11 },
++  { 3000.0,    50.0,   30.0,  50.0,  20.0, 100.0, 25.0, 11 },
++  {100000.0,   25.0,    0.0,   0.0,   0.0,   0.0, 25.0, 11 },
++  {100000.0,    1.0,    0.0,   0.0,   0.0,   0.0,  0.0, 11 }
++};
++
++static cost_preset_t cur_cost;
++
++void SetCostPreset(int index)
++{
++  cur_cost = cost_presets[index];
++
++  if (index == 0 || cur_cost.factor <= 0)
++    cur_cost.factor = cur_info->factor;
++}
++
++#define ADD_COST(v)  \
++  do {  \
++    double t_ = (double) info->cost + (double) (v);  \
++    info->cost = (t_ > 2000000000.0) ? 2000000000 : (int) t_;  \
++  } while (0)
++
+ #define SEG_FAST_THRESHHOLD  200
+ 
+ 
+@@ -344,7 +398,7 @@
+   float_g a, b, fa, fb;
+ 
+   int num;
+-  int factor = cur_info->factor;
++  int factor = cur_cost.factor;
+ 
+   // -AJA- this is the heart of my superblock idea, it tests the
+   //       _whole_ block against the partition line to quickly handle
+@@ -435,7 +489,7 @@
+     if (fa <= DIST_EPSILON || fb <= DIST_EPSILON)
+     {
+       if (check->linedef && check->linedef->is_precious)
+-        info->cost += 40 * factor * PRECIOUS_MULTIPLY;
++        ADD_COST(0.4 * cur_cost.split * factor * PRECIOUS_MULTIPLY);
+     }
+ 
+     /* check for right side */
+@@ -463,7 +517,7 @@
+       else
+         qnty = IFFY_LEN / MIN(a, b);
+ 
+-      info->cost += (int) (100 * factor * (qnty * qnty - 1.0));
++      ADD_COST(cur_cost.near_r * factor * (qnty * qnty - 1.0));
+       continue;
+     }
+ 
+@@ -488,7 +542,7 @@
+       else
+         qnty = IFFY_LEN / -MAX(a, b);
+ 
+-      info->cost += (int) (70 * factor * (qnty * qnty - 1.0));
++      ADD_COST(cur_cost.near_l * factor * (qnty * qnty - 1.0));
+       continue;
+     }
+ 
+@@ -503,9 +557,9 @@
+     // lifts/stairs from being messed up accidentally by splits.
+ 
+     if (check->linedef && check->linedef->is_precious)
+-      info->cost += 100 * factor * PRECIOUS_MULTIPLY;
++      ADD_COST(cur_cost.split * factor * PRECIOUS_MULTIPLY);
+     else
+-      info->cost += 100 * factor;
++      ADD_COST(cur_cost.split * factor);
+ 
+     // -AJA- check if the split point is very close to one end, which
+     //       is quite an undesirable situation (producing really short
+@@ -519,7 +573,7 @@
+ 
+       // the closer to the end, the higher the cost
+       qnty = IFFY_LEN / MIN(fa, fb);
+-      info->cost += (int) (140 * factor * (qnty * qnty - 1.0));
++      ADD_COST(cur_cost.iffy * factor * (qnty * qnty - 1.0));
+     }
+   }
+ 
+@@ -580,19 +634,29 @@
+   }
+ 
+   /* increase cost by the difference between left & right */
+-  info.cost += 100 * abs(info.real_left - info.real_right);
++  {
++    eval_info_t *pi = &info;
++    double v = cur_cost.balance * abs(info.real_left - info.real_right);
++    double t = (double) pi->cost + v;
++    pi->cost = (t > 2000000000.0) ? 2000000000 : (int) t;
++  }
+ 
+   // -AJA- allow miniseg counts to affect the outcome, but only to a
+   //       lesser degree than real segs.
+   
+-  info.cost += 50 * abs(info.mini_left - info.mini_right);
++  {
++    eval_info_t *pi = &info;
++    double v = cur_cost.mini * abs(info.mini_left - info.mini_right);
++    double t = (double) pi->cost + v;
++    pi->cost = (t > 2000000000.0) ? 2000000000 : (int) t;
++  }
+ 
+   // -AJA- Another little twist, here we show a slight preference for
+   //       partition lines that lie either purely horizontally or
+   //       purely vertically.
+   
+   if (part->pdx != 0 && part->pdy != 0)
+-    info.cost += 25;
++    info.cost += (int) cur_cost.diag;
+ 
+ # if DEBUG_PICKNODE
+   PrintDebug("Eval %p: splits=%d iffy=%d near=%d left=%d+%d right=%d+%d "
+@@ -673,10 +737,10 @@
+   int V_cost = -1;
+ 
+   if (best_H)
+-    H_cost = EvalPartition(seg_list, best_H, 99999999);
++    H_cost = EvalPartition(seg_list, best_H, INT_MAX);
+ 
+   if (best_V)
+-    V_cost = EvalPartition(seg_list, best_V, 99999999);
++    V_cost = EvalPartition(seg_list, best_V, INT_MAX);
+ 
+ # if DEBUG_PICKNODE
+   PrintDebug("FindFastSeg: best_H=%p (cost %d) | best_V=%p (cost %d)\n",
+diff -ruN a/seg.h b/seg.h
+--- a/seg.h	2026-10-02 21:57:39.448686949 -0400
++++ b/seg.h	2026-10-02 21:57:39.451058741 -0400
+@@ -28,6 +28,14 @@
+ 
+ #define IFFY_LEN  4.0
+ 
++// number of partition cost presets (preset 0 is the classic glBSP cost,
++// presets 1 .. NUM_COST_PRESETS-1 favour smaller lumps)
++#define NUM_COST_PRESETS  6
++
++// choose the preset used by PickNode().  Must be called before the
++// tree is built.
++void SetCostPreset(int index);
++
+ 
+ // smallest distance between two points before being considered equal
+ #define DIST_EPSILON  (1.0 / 128.0)
+diff -ruN a/system.c b/system.c
+--- a/system.c	2026-10-02 21:57:39.448738171 -0400
++++ b/system.c	2026-10-02 21:57:39.451085718 -0400
+@@ -76,6 +76,8 @@
+   (* cur_funcs->fatal_error)("\nINTERNAL ERROR: *** %s ***\n\n", message_buf);
+ }
+ 
++int trial_mute = 0;
++
+ //
+ // PrintMsg
+ //
+@@ -83,6 +85,9 @@
+ {
+   va_list args;
+ 
++  if (trial_mute)
++    return;
++
+   va_start(args, str);
+   _vsnprintf(message_buf, sizeof(message_buf), str, args);
+   va_end(args);
+@@ -101,6 +106,9 @@
+ {
+   va_list args;
+ 
++  if (trial_mute)
++    return;
++
+   va_start(args, str);
+   _vsnprintf(message_buf, sizeof(message_buf), str, args);
+   va_end(args);
+@@ -120,6 +128,9 @@
+ {
+   va_list args;
+ 
++  if (trial_mute)
++    return;
++
+   va_start(args, str);
+   _vsnprintf(message_buf, sizeof(message_buf), str, args);
+   va_end(args);
+@@ -140,6 +151,9 @@
+ {
+   va_list args;
+ 
++  if (trial_mute)
++    return;
++
+   va_start(args, str);
+   _vsnprintf(message_buf, sizeof(message_buf), str, args);
+   va_end(args);
+diff -ruN a/system.h b/system.h
+--- a/system.h	2026-10-02 21:57:39.448754834 -0400
++++ b/system.h	2026-10-02 21:57:39.451120693 -0400
+@@ -47,6 +47,9 @@
+ void InternalError(const char *str, ...) GCCATTR((format (printf, 1, 2)));
+ 
+ // display normal messages & warnings to the screen
++// non-zero while trial builds run: suppresses messages and warnings
++extern int trial_mute;
++
+ void PrintMsg(const char *str, ...) GCCATTR((format (printf, 1, 2)));
+ void PrintVerbose(const char *str, ...) GCCATTR((format (printf, 1, 2)));
+ void PrintWarn(const char *str, ...) GCCATTR((format (printf, 1, 2)));
+diff -ruN a/wad.c b/wad.c
+--- a/wad.c	2026-10-02 21:57:39.448804561 -0400
++++ b/wad.c	2026-10-02 21:57:39.451135525 -0400
+@@ -913,7 +913,14 @@
+ 
+   DisplayTicker();
+ 
+-  memcpy(entry.name, lump->name, 8);
++  // lump names are NUL terminated strings which may be shorter than 8
++  // chars: copy only the string and zero-pad (do not read past it).
++  {
++    size_t nlen = strlen(lump->name);
++
++    memset(entry.name, 0, sizeof(entry.name));
++    memcpy(entry.name, lump->name, (nlen < 8) ? nlen : 8);
++  }
+ 
+   entry.start  = UINT32(lump->new_start);
+   entry.length = UINT32(lump->length);

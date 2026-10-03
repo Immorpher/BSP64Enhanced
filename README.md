@@ -26,6 +26,15 @@ In addition to all of the features in the normal mode, the compress edges mode w
 
 Special lines are line definitions that contain a special (actions, macros, and switch properties), have a non-zero tag, border sectors with differing tags, or use any flags which specifically block movement (one-sided, block projectiles, block monsters, and ect...). These special lines are excluded from edge compression, thus any of these properties can be added to any line (or a tag to a sector) where you may not want enemies or players being able to approach closely to.
 
+### Smaller Trees
+
+The `VERTEXES`, `SEGS`, `SSECTORS`, `NODES` and `LEAFS` lumps are kept as small as possible automatically, with no change to gameplay:
+
++ Pieces of the same linedef side which end up next to each other in one subsector (and collinear minisegs) are merged back into a single seg, and vertices which are no longer referenced are not written.
++ The BSP tree is built with partition cost presets that avoid seg splits much more strongly than the classic glBSP cost. Maps with up to 4000 linedefs try five presets and keep the one giving the smallest lumps; larger maps use the best all-round preset directly, so build times stay short.
+
+Using `-c` (split cost) or `-f` (fast) skips the preset search and uses the classic cost. `-xt` does the same without changing anything else.
+
 ### Command-line Commands
 
 These additional options can be added to the nodebuilder configurations of the "BSP64Enhanced.cfg" file or they can be used when running the nodebuilder from command-line.
@@ -50,6 +59,7 @@ Advanced Options:
 +  -xp -noprog        Don't show progress indicator
 +  -xu -noprune       Never prune linedefs or sidedefs
 +  -s  -skipselfref   Ignore self referencing lines
++  -xt -notrials      Build the tree once with the classic glBSP cost (see Smaller Trees)
 
 ## Building
 

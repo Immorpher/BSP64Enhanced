@@ -74,6 +74,11 @@ typedef struct vertex_s
   // for the normal segs).  Normally NULL.  Note: the wall tips on
   // this vertex are not created.
   struct vertex_s *normal_dup;
+
+  // set by CompactBspTree() when a vertex is still referenced by a
+  // seg or leaf of the finished tree.  Unreferenced split vertices are
+  // not written to the VERTEXES lump.
+  int used;
 }
 vertex_t;
 

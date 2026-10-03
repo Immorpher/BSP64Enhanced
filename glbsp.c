@@ -73,6 +73,8 @@ const nodebuildinfo_t default_buildinfo =
   FALSE,   // merge_vert
   FALSE,   // skip_self_ref
   FALSE,   // window_fx
+  FALSE,   // no_trials
+  FALSE,   // factor_given
 
   DEFAULT_BLOCK_LIMIT,   // block_limit
 
@@ -235,6 +237,7 @@ glbsp_ret_e GlbspParseArgs(nodebuildinfo_t *info,
       }
 
       info->factor = (int) strtol(argv[1], NULL, 10);
+      info->factor_given = TRUE;
 
       argv += 2; argc -= 2;
       continue;
@@ -278,6 +281,7 @@ glbsp_ret_e GlbspParseArgs(nodebuildinfo_t *info,
     HANDLE_BOOLEAN2("y",  "windowfx",    window_fx)
     HANDLE_BOOLEAN2("s",  "skipselfref", skip_self_ref)
     HANDLE_BOOLEAN2("xu", "noprune",     no_prune)
+    HANDLE_BOOLEAN2("xt", "notrials",    no_trials)
     HANDLE_BOOLEAN2("xn", "nonormal",    no_normal)
 
     // to err is human...
@@ -422,7 +426,10 @@ void GlbspFree(const char *str)
 
 /* ----- build nodes for a single level --------------------------- */
 
-static glbsp_ret_e HandleLevel(void)
+// Builds the level once with the given cost preset.  When 'final' is
+// FALSE nothing is written: the estimated size of the tree dependent
+// lumps is returned in *score instead.
+static glbsp_ret_e BuildLevelOnce(int preset, int final, long *score)
 {
   superblock_t *seg_list;
   bbox_t seg_bbox;
@@ -434,6 +441,8 @@ static glbsp_ret_e HandleLevel(void)
   if (cur_comms->cancelled)
     return GLBSP_E_Cancelled;
 
+  trial_mute = (final ? 0 : 1);
+
   DisplaySetBarLimit(1, 1000);
   DisplaySetBar(1, 0);
 
@@ -442,6 +451,8 @@ static glbsp_ret_e HandleLevel(void)
   LoadLevel();
 
   InitBlockmap();
+
+  SetCostPreset(preset);
 
   // create initial segs
   seg_list = CreateSegs();
@@ -455,23 +466,88 @@ static glbsp_ret_e HandleLevel(void)
   if (ret == GLBSP_E_OK)
   {
     ClockwiseBspTree(root_node);
+    CompactBspTree(root_node);
 
-    PrintVerbose("Built %d NODES, %d SSECTORS, %d SEGS, %d VERTEXES\n",
-        num_nodes, num_subsecs, num_segs, num_normal_vert + num_gl_vert);
+    if (! final)
+    {
+      *score = ComputeTreeScore();
+    }
+    else
+    {
+      PrintVerbose("Built %d NODES, %d SSECTORS, %d SEGS, %d VERTEXES\n",
+          num_nodes, num_subsecs, num_segs, num_normal_vert + num_gl_vert);
 
-    if (root_node)
-      PrintVerbose("Heights of left and right subtrees = (%d,%d)\n",
-          ComputeBspHeight(root_node->r.node),
-          ComputeBspHeight(root_node->l.node));
+      if (root_node)
+        PrintVerbose("Heights of left and right subtrees = (%d,%d)\n",
+            ComputeBspHeight(root_node->r.node),
+            ComputeBspHeight(root_node->l.node));
 
-    SaveLevel(root_node);
+      SaveLevel(root_node);
+    }
   }
 
   FreeLevel();
   FreeQuickAllocCuts();
   FreeQuickAllocSupers();
 
+  trial_mute = 0;
+
   return ret;
+}
+
+// Levels with more linedefs than this only use the first (best all-round)
+// preset: it gave the smallest lumps on every large map tested, while
+// each extra trial costs several seconds there.
+#define TRIALS_LINEDEF_LIMIT  4000
+
+static glbsp_ret_e HandleLevel(void)
+{
+  glbsp_ret_e ret;
+
+  int best_preset = 0;
+
+  // Unless the user picked a split cost with -c (or asked for -fast or
+  // -notrials), the tree is built with the trial cost presets, and the
+  // preset which yields the smallest VERTEXES + SEGS + SSECTORS + NODES +
+  // LEAFS is used for the real build.
+  if (! cur_info->no_trials && ! cur_info->factor_given && ! cur_info->fast)
+  {
+    const lump_t *lines = FindLevelLump("LINEDEFS");
+    int num_lines = lines ? (lines->length / 16) : 0;
+    int last = (num_lines > TRIALS_LINEDEF_LIMIT) ? 1 : (NUM_COST_PRESETS - 1);
+
+    best_preset = 1;
+
+    if (last > 1)
+    {
+      long best_score = 0;
+      int i;
+
+      int saved_small = cur_comms->total_small_warn;
+      int saved_big   = cur_comms->total_big_warn;
+
+      for (i=1; i <= last; i++)
+      {
+        long score = 0;
+
+        ret = BuildLevelOnce(i, FALSE, &score);
+
+        if (ret != GLBSP_E_OK)
+          return ret;
+
+        if (i == 1 || score < best_score)
+        {
+          best_score  = score;
+          best_preset = i;
+        }
+      }
+
+      cur_comms->total_small_warn = saved_small;
+      cur_comms->total_big_warn   = saved_big;
+    }
+  }
+
+  return BuildLevelOnce(best_preset, TRUE, NULL);
 }
 
 

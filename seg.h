@@ -28,6 +28,14 @@
 
 #define IFFY_LEN  4.0
 
+// number of partition cost presets (preset 0 is the classic glBSP cost,
+// presets 1 .. NUM_COST_PRESETS-1 favour smaller lumps)
+#define NUM_COST_PRESETS  6
+
+// choose the preset used by PickNode().  Must be called before the
+// tree is built.
+void SetCostPreset(int index);
+
 
 // smallest distance between two points before being considered equal
 #define DIST_EPSILON  (1.0 / 128.0)
