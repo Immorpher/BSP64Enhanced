@@ -60,10 +60,6 @@
 #define LINEFLAG_MIRROR_HORIZ	0x40
 #define LINEFLAG_MIRROR_VERT	0x80
 
-/* ------ Hexen Flags ------------------------------------ */
-#define HEXTYPE_POLY_START     1
-#define HEXTYPE_POLY_EXPLICIT  5
-
 /* ----- The wad structures ---------------------- */
 
 // wad header
@@ -130,20 +126,6 @@ typedef struct raw_linedef_s
 }
 raw_linedef_t;
 
-typedef struct raw_hexen_linedef_s
-{
-  uint16_g start;        // from this vertex...
-  uint16_g end;          // ... to this vertex
-  uint16_g flags;        // linedef flags (impassible, etc)
-  uint8_g  type;         // linedef type
-  uint8_g  specials[5];  // hexen specials
-  uint16_g sidedef1;     // right sidedef
-  uint16_g sidedef2;     // left sidedef
-}
-raw_hexen_linedef_t;
-
-
-
 typedef struct raw_sidedef_s
 {
   sint16_g x_offset;  // X offset for texture
@@ -198,32 +180,6 @@ typedef struct raw_thing_s
 raw_thing_t;
 
 
-// -JL- Hexen thing definition
-typedef struct raw_hexen_thing_s
-{
-  sint16_g tid;       // thing tag id (for scripts/specials)
-  sint16_g x, y;      // position
-  sint16_g height;    // start height above floor
-  sint16_g angle;     // angle thing faces
-  uint16_g type;      // type of thing
-  uint16_g options;   // when appears, deaf, dormant, etc..
-
-  uint8_g special;    // special type
-  uint8_g arg[5];     // special arguments
-} 
-raw_hexen_thing_t;
-
-// -JL- Hexen polyobj thing types
-#define PO_ANCHOR_TYPE      3000
-#define PO_SPAWN_TYPE       3001
-#define PO_SPAWNCRUSH_TYPE  3002
-
-// -JL- ZDoom polyobj thing types
-#define ZDOOM_PO_ANCHOR_TYPE      9300
-#define ZDOOM_PO_SPAWN_TYPE       9301
-#define ZDOOM_PO_SPAWNCRUSH_TYPE  9302
-
-
 /* ----- The BSP tree structures ----------------------- */
 
 typedef struct raw_seg_s
@@ -247,17 +203,6 @@ typedef struct raw_gl_seg_s
   uint16_g partner;    // partner seg number, or -1
 }
 raw_gl_seg_t;
-
-
-typedef struct raw_v3_seg_s
-{
-  uint32_g start;      // from this vertex...
-  uint32_g end;        // ... to this vertex
-  uint16_g linedef;    // linedef that this seg goes along, or -1
-  uint16_g side;       // 0 if on right of linedef, 1 if on left
-  uint32_g partner;    // partner seg number, or -1
-}
-raw_v3_seg_t;
 
 
 typedef struct raw_bbox_s
@@ -284,24 +229,6 @@ typedef struct raw_subsec_s
   uint16_g first;   // first Seg
 }
 raw_subsec_t;
-
-
-typedef struct raw_v3_subsec_s
-{
-  uint32_g num;     // number of Segs in this Sub-Sector
-  uint32_g first;   // first Seg
-}
-raw_v3_subsec_t;
-
-
-typedef struct raw_v5_node_s
-{
-  sint16_g x, y;         // starting point
-  sint16_g dx, dy;       // offset to ending point
-  raw_bbox_t b1, b2;     // bounding rectangles
-  uint32_g right, left;  // children: Node or SSector (if high bit is set)
-}
-raw_v5_node_t;
 
 
 #endif /* __GLBSP_STRUCTS_H__ */

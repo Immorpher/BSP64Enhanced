@@ -57,20 +57,14 @@ const nodebuildinfo_t default_buildinfo =
   FALSE,   // no_progress
   FALSE,   // quiet
   FALSE,   // mini_warnings
-  FALSE,   // force_hexen
   FALSE,   // comp_edge
   FALSE,   // no_block_rem
   FALSE,   // fast
 
   FALSE,   // load_all
-  FALSE,   // no_normal
-  FALSE,   // force_normal
-  FALSE,   // gwa_mode
-  FALSE,   // prune_sect
   FALSE,   // no_prune
   FALSE,   // merge_vert
   FALSE,   // skip_self_ref
-  FALSE,   // window_fx
   FALSE,   // no_trials
   FALSE,   // factor_given
 
@@ -157,13 +151,6 @@ glbsp_ret_e GlbspParseArgs(nodebuildinfo_t *info,
       if (got_output)
       {
         SetErrorMsg("Input filenames must precede the -o option");
-        cur_comms = NULL;
-        return GLBSP_E_BadArgs;
-      }
-
-      if (CheckExtension(argv[0], "gwa"))
-      {
-        SetErrorMsg("Input file cannot be GWA (contains nothing to build)");
         cur_comms = NULL;
         return GLBSP_E_BadArgs;
       }
@@ -262,23 +249,18 @@ glbsp_ret_e GlbspParseArgs(nodebuildinfo_t *info,
     HANDLE_BOOLEAN2("w",  "warn",       mini_warnings)
     HANDLE_BOOLEAN2("e",  "compedge",   comp_edge)
     HANDLE_BOOLEAN2("nb", "noblockrem", no_block_rem)
-    HANDLE_BOOLEAN2("n",  "normal",     force_normal)
     HANDLE_BOOLEAN2("xr", "noreject",   no_reject)
     HANDLE_BOOLEAN2("xp", "noprog",     no_progress)
 
     HANDLE_BOOLEAN2("m",  "mergevert",   merge_vert)
-    HANDLE_BOOLEAN2("u",  "prunesec",    prune_sect)
-    HANDLE_BOOLEAN2("y",  "windowfx",    window_fx)
     HANDLE_BOOLEAN2("s",  "skipselfref", skip_self_ref)
     HANDLE_BOOLEAN2("xu", "noprune",     no_prune)
     HANDLE_BOOLEAN2("xt", "notrials",    no_trials)
-    HANDLE_BOOLEAN2("xn", "nonormal",    no_normal)
 
     // to err is human...
     HANDLE_BOOLEAN("noprogress",  no_progress)
     HANDLE_BOOLEAN("compedge",    comp_edge)
     HANDLE_BOOLEAN("noblockrem",  no_block_rem)
-    HANDLE_BOOLEAN("prunesect",   prune_sect)
 
     // ignore these options for backwards compatibility
     if (UtilStrCaseCmp(opt_str, "fresh") == 0 ||
@@ -289,14 +271,6 @@ glbsp_ret_e GlbspParseArgs(nodebuildinfo_t *info,
       argv++; argc--;
       continue;
     }
-
-    // backwards compatibility
-    HANDLE_BOOLEAN("forcegwa",    gwa_mode)
-    HANDLE_BOOLEAN("forcenormal", force_normal)
-    HANDLE_BOOLEAN("loadall",     load_all)
-
-    // The -hexen option is only kept for backwards compatibility
-    HANDLE_BOOLEAN("hexen", force_hexen)
 
     SetErrorMsg("Unknown option: %s", argv[0]);
 
@@ -323,25 +297,26 @@ glbsp_ret_e GlbspCheckInfo(nodebuildinfo_t *info,
     return GLBSP_E_BadArgs;
   }
 
-  if (CheckExtension(info->input_file, "gwa"))
-  {
-    SetErrorMsg("Input file cannot be GWA (contains nothing to build)");
-    return GLBSP_E_BadArgs;
-  }
-
   if (!info->output_file || info->output_file[0] == 0)
   {
-    GlbspFree(info->output_file);
-    info->output_file = GlbspStrDup(ReplaceExtension(
-          info->input_file, "gwa"));
+    // no -o given: write "<input name>_nodes.wad" next to the input
+    char buffer[512];
+    char *dot_pos;
 
-    info->gwa_mode = TRUE;
+    GlbspFree(info->output_file);
+
+    strncpy(buffer, info->input_file, 480);
+    buffer[480] = 0;
+
+    dot_pos = strrchr(buffer, '.');
+
+    if (dot_pos && ! strchr(dot_pos, '/') && ! strchr(dot_pos, '\\'))
+      *dot_pos = 0;
+
+    strcat(buffer, "_nodes.wad");
+
+    info->output_file = GlbspStrDup(buffer);
     info->missing_output = TRUE;
-  }
-  else  /* has output filename */
-  {
-    if (CheckExtension(info->output_file, "gwa"))
-      info->gwa_mode = TRUE;
   }
 
   if (UtilStrCaseCmp(info->input_file, info->output_file) == 0)
@@ -350,20 +325,6 @@ glbsp_ret_e GlbspCheckInfo(nodebuildinfo_t *info,
     info->same_filenames = TRUE;
   }
 
-  if (info->gwa_mode && info->force_normal)
-  {
-    info->force_normal = FALSE;
-    SetErrorMsg("-forcenormal used, but GWA files don't have normal nodes");
-    return GLBSP_E_BadInfoFixed;
-  }
- 
-  if (info->no_normal && info->force_normal)
-  {
-    info->force_normal = FALSE;
-    SetErrorMsg("-forcenormal and -nonormal cannot be used together");
-    return GLBSP_E_BadInfoFixed;
-  }
- 
   if (info->factor <= 0 || info->factor > 32)
   {
     info->factor = DEFAULT_FACTOR;
@@ -572,7 +533,7 @@ glbsp_ret_e GlbspBuildNodes(const nodebuildinfo_t *info,
     PrintMsg("* No output file specified. Using: %s\n\n", info->output_file);
 
   if (info->same_filenames)
-    PrintMsg("* Output file is same as input file. Using -loadall\n\n");
+    PrintMsg("* Output file is same as input file.\n\n");
 
   // opens and reads directory from the input wad
   ret = ReadWadFile(cur_info->input_file);
@@ -626,10 +587,6 @@ glbsp_ret_e GlbspBuildNodes(const nodebuildinfo_t *info,
   if (ret == GLBSP_E_OK)
   {
     ret = WriteWadFile(cur_info->output_file);
-
-    // when modifying the original wad, any GWA companion must be deleted
-    if (ret == GLBSP_E_OK && cur_info->same_filenames)
-      DeleteGwaFile(cur_info->output_file);
 
     PrintMsg("\n");
     PrintMsg("Total serious warnings: %d\n", cur_comms->total_big_warn);

@@ -459,28 +459,6 @@ superblock_t *CreateSegs(void)
             line->index);
         line->two_sided = 0;
       }
-
-      // handle the 'One-Sided Window' trick
-      if (line->window_effect)
-      {
-        seg_t *left = NewSeg();
-
-        left->start   = line->end;
-        left->end     = line->start;
-        left->side    = 1;
-        left->linedef = right->linedef;
-        left->sector  = line->window_effect;
-
-        left->source_line = line;
-        left->index = -1;
-
-        RecomputeSeg(left);
-
-        AddSegToSuper(block, left);
-
-        left->partner = right;
-        right->partner = left;
-      }
     }
   }
 
@@ -589,8 +567,6 @@ static void ClockwiseOrder(subsec_t *sub)
 
     if (! array[i]->linedef)
       cur_score = 0;
-    else if (array[i]->linedef->window_effect)
-      cur_score = 1;
     else if (array[i]->linedef->self_ref)
       cur_score = 2;
 

@@ -71,7 +71,6 @@ typedef struct level_s
   // information on overflow
   int soft_limit;
   int hard_limit;
-  int v5_switch;
 }
 level_t;
 
@@ -96,7 +95,6 @@ level_t;
 #define LIMIT_BAD_SIDE     0x001000
 #define LIMIT_BMAP_TRUNC   0x002000
 #define LIMIT_BLOCKMAP     0x004000
-#define LIMIT_ZDBSP        0x008000
 
 
 // directory entry
@@ -144,16 +142,6 @@ lump_t;
 
 /* ----- function prototypes --------------------- */
 
-// check if the filename has the given extension.  Returns 1 if yes,
-// otherwise zero.
-//
-int CheckExtension(const char *filename, const char *ext);
-
-// remove any extension from the given filename, and add the given
-// extension, and return the newly creating filename.
-//
-char *ReplaceExtension(const char *filename, const char *ext);
-
 // open the input wad file and read the contents into memory.  When
 // 'load_all' is false, lumps other than level info will be marked as
 // copyable instead of loaded.
@@ -176,11 +164,6 @@ glbsp_ret_e WriteWadFile(const char *filename);
 
 // close all wad files and free any memory.
 void CloseWads(void);
-
-// delete the GWA file that is associated with the given normal
-// wad file.  It doesn't have to exist.
-//
-void DeleteGwaFile(const char *base_wad_name);
 
 // returns the number of levels found in the wad.
 int CountLevels(void);
@@ -228,7 +211,6 @@ void AddGLTextLine(const char *keyword, const char *value);
 // mark the fact that this level failed to build.
 void MarkSoftFailure(int soft);
 void MarkHardFailure(int hard);
-void MarkZDSwitch(void);
 
 // alert the user if any levels failed to build properly.
 void ReportFailedLevels(void);

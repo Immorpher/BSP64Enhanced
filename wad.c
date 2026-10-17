@@ -402,10 +402,6 @@ static void ProcessDirEntry(lump_t *lump)
     return;
   }
 
-  // mark the lump as 'ignorable' when in GWA mode.
-  if (cur_info->gwa_mode)
-    lump->flags |= LUMP_IGNORE_ME;
-
   // --- LEVEL MARKERS ---
 
   if (CheckLevelName(lump->name))
@@ -987,48 +983,6 @@ static int WriteDirectory(void)
 /* ---------------------------------------------------------------- */
 
 
-//
-// CheckExtension
-//
-int CheckExtension(const char *filename, const char *ext)
-{
-  int A = (int)strlen(filename) - 1;
-  int B = (int)strlen(ext) - 1;
-
-  for (; B >= 0; B--, A--)
-  {
-    if (A < 0)
-      return FALSE;
-    
-    if (toupper(filename[A]) != toupper(ext[B]))
-      return FALSE;
-  }
-
-  return (A >= 1) && (filename[A] == '.');
-}
-
-//
-// ReplaceExtension
-//
-char *ReplaceExtension(const char *filename, const char *ext)
-{
-  char *dot_pos;
-  char buffer[512];
-
-  strcpy(buffer, filename);
-  
-  dot_pos = strrchr(buffer, '.');
-
-  if (dot_pos)
-    dot_pos[1] = 0;
-  else
-    strcat(buffer, ".");
-  
-  strcat(buffer, ext);
-
-  return UtilStrDup(buffer);
-}
-
 
 //
 // CreateLevelLump
@@ -1337,9 +1291,6 @@ glbsp_ret_e WriteWadFile(const char *filename)
   PrintMsg("\n");
   PrintMsg("Saving WAD as %s\n", filename);
 
-  if (cur_info->gwa_mode)
-    wad.kind = PWAD;
-
   RecomputeDirectory();
 
   // create output wad file & write the header
@@ -1383,19 +1334,6 @@ glbsp_ret_e WriteWadFile(const char *filename)
   return GLBSP_E_OK;
 }
 
-
-//
-// DeleteGwaFile
-//
-void DeleteGwaFile(const char *base_wad_name)
-{
-  char *gwa_file = ReplaceExtension(base_wad_name, "gwa");
-
-  if (remove(gwa_file) == 0)
-    PrintMsg("Deleted GWA file: %s\n", gwa_file);
- 
-  UtilFree(gwa_file);
-}
 
 
 //
@@ -1451,16 +1389,6 @@ void MarkSoftFailure(int soft)
 void MarkHardFailure(int hard)
 {
   wad.current_level->lev_info->hard_limit |= hard;
-}
-
-void MarkZDSwitch(void)
-{
-  level_t *lev = wad.current_level->lev_info;
-
-  lev->v5_switch |= LIMIT_ZDBSP;
-
-  lev->soft_limit &= ~ (LIMIT_VERTEXES);
-  lev->hard_limit &= ~ (LIMIT_VERTEXES);
 }
 
 
@@ -1543,48 +1471,6 @@ void ReportOverflows(boolean_g hard)
 }
 
 //
-// ReportV5Switches
-//
-void ReportV5Switches(void)
-{
-  lump_t *cur;
-
-  int saw_zdbsp = FALSE;
-
-  PrintMsg(
-    "V5 FORMAT UPGRADES.  The following levels require a Doom port\n"
-    "which supports V5 GL-Nodes, otherwise they will fail (or crash).\n\n"
-  );
-
-  for (cur=wad.dir_head; cur; cur=cur->next)
-  {
-    level_t *lev = cur->lev_info;
-
-    if (! (lev && ! (lev->flags & LEVEL_IS_GL)))
-      continue;
-
-    if (lev->v5_switch == 0)
-      continue;
-
-    if ((lev->v5_switch & LIMIT_ZDBSP) && ! saw_zdbsp)
-    {
-      PrintMsg("ZDBSP FORMAT has also been used for regular nodes.\n\n");
-      saw_zdbsp = TRUE;
-    }
-
-    if (lev->v5_switch & LIMIT_VERTEXES)
-    {
-      PrintMsg("%-8s: Number of Vertices overflowed the limit.\n", cur->name);
-    }
-
-    if (lev->v5_switch & LIMIT_GL_SSECT)
-    {
-      PrintMsg("%-8s: Number of GL segs overflowed the limit.\n", cur->name);
-    }
-  }
-}
-
-//
 // ReportFailedLevels
 //
 void ReportFailedLevels(void)
@@ -1593,7 +1479,6 @@ void ReportFailedLevels(void)
 
   int fail_soft = 0;
   int fail_hard = 0;
-  int fail_v5   = 0;
 
   boolean_g need_spacer = FALSE;
  
@@ -1604,12 +1489,11 @@ void ReportFailedLevels(void)
 
     if (cur->lev_info->soft_limit != 0) fail_soft++;
     if (cur->lev_info->hard_limit != 0) fail_hard++;
-    if (cur->lev_info->v5_switch  != 0) fail_v5++;
   }
 
   PrintMsg("\n");
 
-  if (fail_soft + fail_hard + fail_v5 == 0)
+  if (fail_soft + fail_hard == 0)
   {
     PrintMsg("All levels were built successfully.\n");
     return;
@@ -1620,15 +1504,6 @@ void ReportFailedLevels(void)
   if (fail_soft > 0)
   {
     ReportOverflows(FALSE);
-    need_spacer = TRUE;
-  }
-
-  if (fail_v5 > 0)
-  {
-    if (need_spacer)
-      PrintMsg("\n");
-
-    ReportV5Switches();
     need_spacer = TRUE;
   }
 

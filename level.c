@@ -53,8 +53,6 @@
 
 // per-level variables
 
-boolean_g lev_doing_normal;
-boolean_g lev_doing_hexen;
 
 
 
@@ -370,48 +368,6 @@ void GetThings(void)
 }
 
 //
-// GetThingsHexen
-//
-void GetThingsHexen(void)
-{
-  int i, count=-1;
-  raw_hexen_thing_t *raw;
-  lump_t *lump = FindLevelLump("THINGS");
-
-  if (lump)
-    count = lump->length / sizeof(raw_hexen_thing_t);
-
-  if (!lump || count == 0)
-  {
-    // Note: no error if no things exist, even though technically a map
-    // will be unplayable without the player starts.
-    PrintWarn("Couldn't find any Things!\n");
-    return;
-  }
-
-  DisplayTicker();
-
-# if DEBUG_LOAD
-  PrintDebug("GetThingsHexen: num = %d\n", count);
-# endif
-
-  raw = (raw_hexen_thing_t *) lump->data;
-
-  for (i=0; i < count; i++, raw++)
-  {
-    thing_t *thing = NewThing();
-
-    thing->x = SINT16(raw->x);
-    thing->y = SINT16(raw->y);
-
-    thing->type = UINT16(raw->type);
-    thing->options = UINT16(raw->options);
-
-    thing->index = i;
-  }
-}
-
-//
 // GetSidedefs
 //
 void GetSidedefs(void)
@@ -588,82 +544,6 @@ void GetLinedefs(void)
   }
 }
 
-//
-// GetLinedefsHexen
-//
-void GetLinedefsHexen(void)
-{
-  int i, j, count=-1;
-  raw_hexen_linedef_t *raw;
-  lump_t *lump = FindLevelLump("LINEDEFS");
-
-  if (lump)
-    count = lump->length / sizeof(raw_hexen_linedef_t);
-
-  if (!lump || count == 0)
-    FatalError("Couldn't find any Linedefs");
-
-  DisplayTicker();
-
-# if DEBUG_LOAD
-  PrintDebug("GetLinedefsHexen: num = %d\n", count);
-# endif
-
-  raw = (raw_hexen_linedef_t *) lump->data;
-
-  for (i=0; i < count; i++, raw++)
-  {
-    linedef_t *line;
-
-    vertex_t *start = LookupVertex(UINT16(raw->start));
-    vertex_t *end   = LookupVertex(UINT16(raw->end));
-
-    start->ref_count++;
-    end->ref_count++;
-
-    line = NewLinedef();
-
-    line->start = start;
-    line->end   = end;
-
-    // check for zero-length line
-    line->zero_len = (fabs(start->x - end->x) < DIST_EPSILON) && 
-        (fabs(start->y - end->y) < DIST_EPSILON);
-
-    line->flags = UINT16(raw->flags);
-    line->type = UINT8(raw->type);
-    line->tag  = 0;
-
-    /* read specials */
-    for (j=0; j < 5; j++)
-      line->specials[j] = UINT8(raw->specials[j]);
-
-    // -JL- Added missing twosided flag handling that caused a broken reject
-    line->two_sided = (line->flags & LINEFLAG_TWO_SIDED) ? TRUE : FALSE;
-
-    line->right = SafeLookupSidedef(UINT16(raw->sidedef1));
-    line->left  = SafeLookupSidedef(UINT16(raw->sidedef2));
-
-    // -JL- Added missing sidedef handling that caused all sidedefs to be pruned
-    if (line->right)
-    {
-      line->right->ref_count++;
-      line->right->on_special |= (line->type > 0) ? 1 : 0;
-    }
-
-    if (line->left)
-    {
-      line->left->ref_count++;
-      line->left->on_special |= (line->type > 0) ? 1 : 0;
-    }
-
-    line->self_ref = (line->left && line->right &&
-        (line->left->sector == line->right->sector));
-
-    line->index = i;
-  }
-}
-
 static INLINE_G int TransformSegDist(const seg_t *seg)
 {
   float_g sx = seg->side ? seg->linedef->end->x : seg->linedef->start->x;
@@ -701,7 +581,6 @@ static int SegCompare(const void *p1, const void *p2)
 
 /* ----- writing routines ------------------------------ */
 
-static const uint8_g *lev_v3_magic = (uint8_g *) "gNd3";
 
 static int real_vert_num = 0;
 
@@ -763,7 +642,7 @@ void PutVertices(char *name, int do_gl)
     InternalError("PutVertices miscounted (%d != %d)", count,
       do_gl ? num_gl_vert : num_normal_vert);
 
-  if (lev_doing_normal && ! do_gl && count > 65534)
+  if (! do_gl && count > 65534)
     MarkHardFailure(LIMIT_VERTEXES);
   else if (count > 32767)
     MarkSoftFailure(do_gl ? LIMIT_GL_VERT : LIMIT_VERTEXES);*/
@@ -924,54 +803,12 @@ void PutLinedefs(void)
     MarkSoftFailure(LIMIT_LINEDEFS);
 }
 
-void PutLinedefsHexen(void)
-{
-  int i, j;
-  lump_t *lump = CreateLevelLump("LINEDEFS");
-
-  DisplayTicker();
-
-  for (i=0; i < num_linedefs; i++)
-  {
-    raw_hexen_linedef_t raw;
-    linedef_t *line = lev_linedefs[i];
-
-    raw.start = UINT16(line->start->index);
-    raw.end   = UINT16(line->end->index);
-
-    raw.flags = UINT16(line->flags);
-    raw.type  = UINT8(line->type);
-
-    // write specials
-    for (j=0; j < 5; j++)
-      raw.specials[j] = UINT8(line->specials[j]);
-
-    raw.sidedef1 = line->right ? UINT16(line->right->index) : 0xFFFF;
-    raw.sidedef2 = line->left  ? UINT16(line->left->index)  : 0xFFFF;
-
-    AppendLevelLump(lump, &raw, sizeof(raw));
-  }
-
-  if (num_linedefs > 65534)
-    MarkHardFailure(LIMIT_LINEDEFS);
-  else if (num_linedefs > 32767)
-    MarkSoftFailure(LIMIT_LINEDEFS);
-}
-
 static INLINE_G uint16_g VertexIndex16Bit(const vertex_t *v)
 {
   if (v->index & IS_GL_VERTEX)
     return (uint16_g) ((v->index & ~IS_GL_VERTEX) | 0x8000U);
 
   return (uint16_g) v->index;
-}
-
-static INLINE_G uint32_g VertexIndex32BitV5(const vertex_t *v)
-{
-  if (v->index & IS_GL_VERTEX)
-    return (uint32_g) ((v->index & ~IS_GL_VERTEX) | 0x80000000U);
-
-  return (uint32_g) v->index;
 }
 
 void PutSegs(void)
@@ -1023,123 +860,6 @@ void PutSegs(void)
     MarkSoftFailure(LIMIT_SEGS);
 }
 
-void PutGLSegs(void)
-{
-  int i, count;
-  lump_t *lump = CreateLevelLump("SEGS");
-
-  DisplayTicker();
-
-  // sort segs into ascending index
-  qsort(segs, num_segs, sizeof(seg_t *), SegCompare);
-
-  for (i=0, count=0; i < num_segs; i++)
-  {
-    raw_gl_seg_t raw;
-    seg_t *seg = segs[i];
-
-    // ignore degenerate segs
-    if (seg->degenerate)
-      continue;
-
-    raw.start = UINT16(VertexIndex16Bit(seg->start));
-    raw.end   = UINT16(VertexIndex16Bit(seg->end));
-    raw.side  = UINT16(seg->side);
-
-    if (seg->linedef)
-      raw.linedef = UINT16(seg->linedef->index);
-    else
-      raw.linedef = UINT16(0xFFFF);
-
-    if (seg->partner)
-      raw.partner = UINT16(seg->partner->index);
-    else
-      raw.partner = UINT16(0xFFFF);
-
-    AppendLevelLump(lump, &raw, sizeof(raw));
-
-    count++;
-
-#   if DEBUG_BSP
-    PrintDebug("PUT GL SEG: %04X  Line %04X %s  Partner %04X  "
-      "(%1.1f,%1.1f) -> (%1.1f,%1.1f)\n", seg->index, UINT16(raw.linedef), 
-      seg->side ? "L" : "R", UINT16(raw.partner),
-      seg->start->x, seg->start->y, seg->end->x, seg->end->y);
-#   endif
-  }
-
-  if (count != num_complete_seg)
-    InternalError("PutGLSegs miscounted (%d != %d)", count,
-      num_complete_seg);
-
-  if (count > 65534)
-    InternalError("PutGLSegs with %d (> 65534) segs", count);
-  else if (count > 32767)
-    MarkSoftFailure(LIMIT_GL_SEGS);
-}
-
-void PutV3Segs(int do_v5)
-{
-  int i, count;
-  lump_t *lump = CreateGLLump("GL_SEGS");
-
-  if (! do_v5)
-      AppendLevelLump(lump, lev_v3_magic, 4);
-
-  DisplayTicker();
-
-  // sort segs into ascending index
-  qsort(segs, num_segs, sizeof(seg_t *), SegCompare);
-
-  for (i=0, count=0; i < num_segs; i++)
-  {
-    raw_v3_seg_t raw;
-    seg_t *seg = segs[i];
-
-    // ignore degenerate segs
-    if (seg->degenerate)
-      continue;
-
-    if (do_v5)
-    {
-      raw.start = UINT32(VertexIndex32BitV5(seg->start));
-      raw.end   = UINT32(VertexIndex32BitV5(seg->end));
-    }
-    else
-    {
-      raw.start = UINT32(seg->start->index);
-      raw.end   = UINT32(seg->end->index);
-    }
-
-    raw.side  = UINT16(seg->side);
-
-    if (seg->linedef)
-      raw.linedef = UINT16(seg->linedef->index);
-    else
-      raw.linedef = UINT16(0xFFFF);
-
-    if (seg->partner)
-      raw.partner = UINT32(seg->partner->index);
-    else
-      raw.partner = UINT32(0xFFFFFFFF);
-
-    AppendLevelLump(lump, &raw, sizeof(raw));
-
-    count++;
-
-#   if DEBUG_BSP
-    PrintDebug("PUT V3 SEG: %06X  Line %04X %s  Partner %06X  "
-      "(%1.1f,%1.1f) -> (%1.1f,%1.1f)\n", seg->index, UINT16(raw.linedef), 
-      seg->side ? "L" : "R", UINT32(raw.partner),
-      seg->start->x, seg->start->y, seg->end->x, seg->end->y);
-#   endif
-  }
-
-  if (count != num_complete_seg)
-    InternalError("PutGLSegs miscounted (%d != %d)", count,
-      num_complete_seg);
-}
-
 void PutSubsecs(char *name, int do_gl)
 {
   int i;
@@ -1170,38 +890,6 @@ void PutSubsecs(char *name, int do_gl)
 
   if (num_subsecs > 32767)
     MarkHardFailure(do_gl ? LIMIT_GL_SSECT : LIMIT_SSECTORS);
-}
-
-void PutV3Subsecs(int do_v5)
-{
-  int i;
-  lump_t *lump;
-
-  DisplayTicker();
-
-  lump = CreateGLLump("GL_SSECT");
-
-  if (! do_v5)
-      AppendLevelLump(lump, lev_v3_magic, 4);
-
-  for (i=0; i < num_subsecs; i++)
-  {
-    raw_v3_subsec_t raw;
-    subsec_t *sub = subsecs[i];
-
-    raw.first = UINT32(sub->seg_list->index);
-    raw.num   = UINT32(sub->seg_count);
-
-    AppendLevelLump(lump, &raw, sizeof(raw));
-
-#   if DEBUG_BSP
-    PrintDebug("PUT V3 SUBSEC %06X  First %06X  Num %06X\n",
-      sub->index, UINT32(raw.first), UINT32(raw.num));
-#   endif
-  }
-
-  if (!do_v5 && num_subsecs > 32767)
-    MarkHardFailure(LIMIT_GL_SSECT);
 }
 
 static int node_cur_index;
@@ -1257,58 +945,7 @@ static void PutOneNode(node_t *node, lump_t *lump)
 # endif
 }
 
-static void PutOneV5Node(node_t *node, lump_t *lump)
-{
-  raw_v5_node_t raw;
-
-  if (node->r.node)
-    PutOneV5Node(node->r.node, lump);
-
-  if (node->l.node)
-    PutOneV5Node(node->l.node, lump);
-
-  node->index = node_cur_index++;
-
-  raw.x  = SINT16(node->x);
-  raw.y  = SINT16(node->y);
-  raw.dx = SINT16(node->dx / (node->too_long ? 2 : 1));
-  raw.dy = SINT16(node->dy / (node->too_long ? 2 : 1));
-
-  raw.b1.minx = SINT16(node->r.bounds.minx);
-  raw.b1.miny = SINT16(node->r.bounds.miny);
-  raw.b1.maxx = SINT16(node->r.bounds.maxx);
-  raw.b1.maxy = SINT16(node->r.bounds.maxy);
-
-  raw.b2.minx = SINT16(node->l.bounds.minx);
-  raw.b2.miny = SINT16(node->l.bounds.miny);
-  raw.b2.maxx = SINT16(node->l.bounds.maxx);
-  raw.b2.maxy = SINT16(node->l.bounds.maxy);
-
-  if (node->r.node)
-    raw.right = UINT32(node->r.node->index);
-  else if (node->r.subsec)
-    raw.right = UINT32(node->r.subsec->index | 0x80000000U);
-  else
-    InternalError("Bad right child in V5 node %d", node->index);
-
-  if (node->l.node)
-    raw.left = UINT32(node->l.node->index);
-  else if (node->l.subsec)
-    raw.left = UINT32(node->l.subsec->index | 0x80000000U);
-  else
-    InternalError("Bad left child in V5 node %d", node->index);
-
-  AppendLevelLump(lump, &raw, sizeof(raw));
-
-# if DEBUG_BSP
-  PrintDebug("PUT V5 NODE %08X  Left %08X  Right %08X  "
-    "(%d,%d) -> (%d,%d)\n", node->index, UINT32(raw.left),
-    UINT32(raw.right), node->x, node->y,
-    node->x + node->dx, node->y + node->dy);
-# endif
-}
-
-void PutNodes(char *name, int do_v5, node_t *root)
+void PutNodes(char *name, node_t *root)
 {
   lump_t *lump;
 
@@ -1320,17 +957,14 @@ void PutNodes(char *name, int do_v5, node_t *root)
 
   if (root)
   {
-    if (do_v5)
-      PutOneV5Node(root, lump);
-    else
-      PutOneNode(root, lump);
+    PutOneNode(root, lump);
   }
 
   if (node_cur_index != num_nodes)
     InternalError("PutNodes miscounted (%d != %d)",
       node_cur_index, num_nodes);
 
-  if (!do_v5 && node_cur_index > 32767)
+  if (node_cur_index > 32767)
     MarkHardFailure(LIMIT_NODES);
 }
 
@@ -1345,20 +979,8 @@ void LoadLevel(void)
 
   const char *level_name = GetLevelName();
 
-  lev_doing_normal = TRUE;	// force build normal nodes
-
-  // -JL- Identify Hexen mode by presence of BEHAVIOR lump
-  lev_doing_hexen = (FindLevelLump("BEHAVIOR") != NULL);
-
-  if (lev_doing_normal)
-    message = UtilFormat("Building normal and GL nodes on %s%s",
-        level_name, lev_doing_hexen ? " (Hexen)" : "");
-  else
-    message = UtilFormat("Building GL nodes on %s%s",
-        level_name, lev_doing_hexen ? " (Hexen)" : "");
+  message = UtilFormat("Building nodes on %s", level_name);
  
-  lev_doing_hexen |= cur_info->force_hexen;
-
   DisplaySetBarText(1, message);
 
   PrintVerbose("\n\n");
@@ -1371,59 +993,36 @@ void LoadLevel(void)
   GetSectors();
   GetSidedefs();
 
-  if (lev_doing_hexen)
-  {
-    GetLinedefsHexen();
-    GetThingsHexen();
-  }
-  else
-  {
-    GetLinedefs();
-    GetThings();
-  }
+  GetLinedefs();
+  GetThings();
 
   PrintVerbose("Loaded %d vertices, %d sectors, %d sides, %d lines, %d things\n", 
       num_vertices, num_sectors, num_sidedefs, num_linedefs, num_things);
- 
-  if (lev_doing_normal)
+
+  // NOTE: order here is critical
+
+  if (!cur_info->no_prune) // disable packing of sidedefs with no prune
   {
-    // NOTE: order here is critical
-
-    if (!cur_info->no_prune) // disable packing of sidedefs with no prune
-    {
-      MergeFlaggedLineSidedefs();
-      DetectDuplicateSidedefs();
-    }
-
-    if (cur_info->merge_vert)
-      DetectDuplicateVertices();
-
-    if (!cur_info->no_prune)
-      PruneLinedefs();
-
-    // always prune vertices (ignore -noprune), otherwise all the
-    // unused vertices from seg splits would keep accumulating.
-    PruneVertices();
-
-    if (!cur_info->no_prune)
-      PruneSidedefs();
-
-    if (cur_info->prune_sect)
-      PruneSectors();
+    MergeFlaggedLineSidedefs();
+    DetectDuplicateSidedefs();
   }
- 
+
+  if (cur_info->merge_vert)
+    DetectDuplicateVertices();
+
+  if (!cur_info->no_prune)
+    PruneLinedefs();
+
+  // always prune vertices (ignore -noprune), otherwise all the
+  // unused vertices from seg splits would keep accumulating.
+  PruneVertices();
+
+  if (!cur_info->no_prune)
+    PruneSidedefs();
+
   CalculateWallTips();
 
-  if (lev_doing_hexen)
-  {
-    // -JL- Find sectors containing polyobjs
-    DetectPolyobjSectors();
-  }
-
   DetectOverlappingLines();
-
-  if (cur_info->window_fx)
-    DetectWindowEffects();
 }
 
 //
@@ -1443,81 +1042,24 @@ void FreeLevel(void)
 }
 
 //
-// PutGLOptions
-//
-void PutGLOptions(void)
-{
-  char option_buf[128];
-
-  sprintf(option_buf, "-factor %d", cur_info->factor);
-
-  if (cur_info->fast         ) strcat(option_buf, " -f");
-  if (cur_info->force_normal ) strcat(option_buf, " -n");
-  if (cur_info->merge_vert   ) strcat(option_buf, " -m");
-  if (cur_info->comp_edge    ) strcat(option_buf, " -e");
-  if (cur_info->no_block_rem ) strcat(option_buf, " -nb");
-  if (cur_info->prune_sect   ) strcat(option_buf, " -u");
-  if (cur_info->skip_self_ref) strcat(option_buf, " -s");
-  if (cur_info->window_fx    ) strcat(option_buf, " -y");
-
-  if (cur_info->no_normal) strcat(option_buf, " -xn");
-  if (cur_info->no_reject) strcat(option_buf, " -xr");
-  if (cur_info->no_prune ) strcat(option_buf, " -xu");
-
-  AddGLTextLine("OPTIONS", option_buf);
-}
-
-//
-// PutGLChecksum
-//
-void PutGLChecksum(void)
-{
-  uint32_g crc;
-  lump_t *lump;
-  char num_buf[64];
-
-  Adler32_Begin(&crc);
-
-  lump = FindLevelLump("VERTEXES");
-
-  if (lump && lump->length > 0)
-    Adler32_AddBlock(&crc, lump->data, lump->length);
-
-  lump = FindLevelLump("LINEDEFS");
-
-  if (lump && lump->length > 0)
-    Adler32_AddBlock(&crc, lump->data, lump->length);
-
-  sprintf(num_buf, "0x%08x", crc);
-
-  AddGLTextLine("CHECKSUM", num_buf);
-}
-
-//
 // SaveLevel
 //
 void SaveLevel(node_t *root_node)
 {
-  if (lev_doing_normal)
-  {
+  PutVertices("VERTEXES", FALSE);
+  PutLeafs();
 
-    PutVertices("VERTEXES", FALSE);
-	PutLeafs();
+  NormaliseBspTree(root_node);
 
-    NormaliseBspTree(root_node);
+  PutSectors();
+  PutSidedefs();
+  PutLinedefs();
+  PutSegs();
+  PutSubsecs("SSECTORS", FALSE);
+  PutNodes("NODES", root_node);
 
-    PutSectors();
-    //IterateSidedefs();
-    PutSidedefs();
-    PutLinedefs();
-	PutSegs();
-	PutSubsecs("SSECTORS", FALSE);
-    PutNodes("NODES", FALSE, root_node);
+  PutBlockmap();
 
-    // -JL- Don't touch blockmap and reject if not doing normal nodes
-    PutBlockmap();
-
-    if (!cur_info->no_reject || !FindLevelLump("REJECT"))
-      PutReject();
-  }
+  if (!cur_info->no_reject || !FindLevelLump("REJECT"))
+    PutReject();
 }

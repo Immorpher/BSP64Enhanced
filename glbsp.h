@@ -86,8 +86,7 @@ typedef struct nodebuildinfo_s
 
   // pointer to a NULL terminated array of strings containing extra
   // input filenames.  Normally this field is NULL.  When there are
-  // extra filenames, 'output_file' will be NULL -- also the build
-  // mode will be GWA.
+  // extra filenames, 'output_file' will be NULL (and a name is derived).
   const char **extra_files;
 
   int factor;
@@ -96,20 +95,14 @@ typedef struct nodebuildinfo_s
   boolean_g no_progress;
   boolean_g quiet;
   boolean_g mini_warnings;
-  boolean_g force_hexen;
   boolean_g comp_edge;
   boolean_g no_block_rem;
   boolean_g fast;
 
   boolean_g load_all;
-  boolean_g no_normal;
-  boolean_g force_normal;
-  boolean_g gwa_mode;  
-  boolean_g prune_sect;
   boolean_g no_prune;
   boolean_g merge_vert;
   boolean_g skip_self_ref;
-  boolean_g window_fx;
   boolean_g no_trials;      // build only once, with the classic cost
   boolean_g factor_given;   // -c was used (implies no_trials)
 
@@ -254,7 +247,7 @@ glbsp_ret_e GlbspParseArgs(nodebuildinfo_t *info,
 // returns GLBSP_E_OK, otherwise an error code is returned.  This
 // routine should always be called shortly before GlbspBuildNodes().
 // Note that when 'output_file' is NULL, this routine will silently
-// update it to the correct GWA filename (and set the gwa_mode flag).
+// update it to "<input name>_nodes.wad".
 //
 // If the GLBSP_E_BadInfoFixed error code is returned, the parameter
 // causing the problem has been changed.  You could either treat it as

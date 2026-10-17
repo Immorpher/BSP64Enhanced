@@ -1,4 +1,4 @@
-# BSP64 Enhanced 1.12
+# BSP64 Enhanced 1.13
 
 This is a nodebuilder for Doom 64 which has blockmap optimization, sidedef compression, and reject editing features. It is a fork of Diema's DMA-BSP64 (https://github.com/darkhaven3/dma-bsp64) which adds features from ZokumBSP (https://doomwiki.org/wiki/ZokumBSP) to Kaiser's D64BSP (https://github.com/MP2E/d64bsp), which is based on glBSP (https://doomwiki.org/wiki/GlBSP), which is further based on the original BSP (https://doomwiki.org/wiki/BSP_(node_builder)). 
 
@@ -34,18 +34,14 @@ General Options:
   -q  -quiet         Quieter output, no level stats
   -f  -fast          Reuse original nodes to build faster
   -w  -warn          Show extra warning messages
-  -n  -normal        Forces the normal nodes to be rebuilt
   -xr -noreject      Don't clobber the REJECT map
   -e  -compedge      Compress edges by blockmap removal
   -nb -noblockrem    Don't remove lines from blockmap
 
 Advanced Options:
   -m  -mergevert     Merge duplicate vertices
-  -y  -windowfx      Handle the 'One-Sided Window' trick
-  -u  -prunesec      Remove unused sectors
   -b  -maxblock ###  Sets the BLOCKMAP truncation limit
   -c  -factor ###    Sets the cost assigned to SEG splits
-  -xn -nonormal      Don't add (if missing) the normal nodes
   -xp -noprog        Don't show progress indicator
   -xu -noprune       Never prune linedefs or sidedefs
   -s  -skipselfref   Ignore self referencing lines

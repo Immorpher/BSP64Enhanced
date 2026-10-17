@@ -87,8 +87,6 @@ typedef struct sector_s
   // allow segs from other sectors to coexist in a subsector.
   char coalesce;
 
-  // -JL- non-zero if this sector contains a polyobj.
-  int has_polyobj;
 
   // reference count.  When building normal nodes, unused sectors will
   // be pruned.
@@ -192,15 +190,11 @@ typedef struct linedef_s
   // sector is the same on both sides
   char self_ref;
 
-  // one-sided linedef used for a special effect (windows).
-  // The value refers to the opposite sector on the back side.
-  sector_t * window_effect;
-
   int flags;
   int type;
   int tag;
 
-  // Hexen support
+  // Doom 64 line flags / action info
   int specials[5];
   
   // normally NULL, except when this linedef directly overlaps an earlier
