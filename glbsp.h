@@ -101,8 +101,6 @@ typedef struct nodebuildinfo_s
   boolean_g no_block_rem;
   boolean_g fast;
 
-  int spec_version;  // 1, 2, 3 or 5
-
   boolean_g load_all;
   boolean_g no_normal;
   boolean_g force_normal;

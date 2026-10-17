@@ -56,8 +56,6 @@
 boolean_g lev_doing_normal;
 boolean_g lev_doing_hexen;
 
-static boolean_g lev_force_v3;
-static boolean_g lev_force_v5;
 
 
 #define LEVELARRAY(TYPE, BASEVAR, NUMVAR)  \
@@ -1451,7 +1449,7 @@ void PutGLOptions(void)
 {
   char option_buf[128];
 
-  sprintf(option_buf, "-v%d -factor %d", cur_info->spec_version, cur_info->factor);
+  sprintf(option_buf, "-factor %d", cur_info->factor);
 
   if (cur_info->fast         ) strcat(option_buf, " -f");
   if (cur_info->force_normal ) strcat(option_buf, " -n");
@@ -1500,46 +1498,6 @@ void PutGLChecksum(void)
 //
 void SaveLevel(node_t *root_node)
 {
-  lev_force_v3 = (cur_info->spec_version == 3) ? TRUE : FALSE;
-  lev_force_v5 = (cur_info->spec_version == 5) ? TRUE : FALSE;
-  
-  // Note: RoundOffBspTree will convert the GL vertices in segs to
-  // their normal counterparts (pointer change: use normal_dup).
-
-  if (cur_info->spec_version == 1)
-    RoundOffBspTree(root_node);
-
-  // GL Nodes
-  {
-    if (num_normal_vert > 32767 || num_gl_vert > 32767)
-    {
-      if (cur_info->spec_version < 3)
-      {
-        lev_force_v5 = TRUE;
-        MarkV5Switch(LIMIT_VERTEXES | LIMIT_GL_SEGS);
-      }
-    }
-
-    if (num_segs > 65534)
-    {
-      if (cur_info->spec_version < 3)
-      {
-        lev_force_v5 = TRUE;
-        MarkV5Switch(LIMIT_GL_SSECT | LIMIT_GL_SEGS);
-      }
-    }
-
-    if (num_nodes > 32767)
-    {
-      if (cur_info->spec_version < 5)
-      {
-        lev_force_v5 = TRUE;
-        MarkV5Switch(LIMIT_GL_NODES);
-      }
-    }
-
-  }
-
   if (lev_doing_normal)
   {
 

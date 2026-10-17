@@ -228,7 +228,6 @@ void AddGLTextLine(const char *keyword, const char *value);
 // mark the fact that this level failed to build.
 void MarkSoftFailure(int soft);
 void MarkHardFailure(int hard);
-void MarkV5Switch(int v5);
 void MarkZDSwitch(void);
 
 // alert the user if any levels failed to build properly.

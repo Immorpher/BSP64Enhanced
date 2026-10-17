@@ -30,7 +30,7 @@
 
 // number of partition cost presets (preset 0 is the classic glBSP cost,
 // presets 1 .. NUM_COST_PRESETS-1 favour smaller lumps)
-#define NUM_COST_PRESETS  6
+#define NUM_COST_PRESETS  5
 
 // choose the preset used by PickNode().  Must be called before the
 // tree is built.

@@ -80,20 +80,26 @@ typedef struct cost_preset_s
   double iffy;      // split very close to a seg end
   double diag;      // surcharge for non axis-aligned partitions
   int    factor;    // multiplies split / near miss / iffy costs
+  double frag;      // per sector which ends up with segs on both sides
 }
 cost_preset_t;
 
 static const cost_preset_t cost_presets[NUM_COST_PRESETS] =
 {
-  {  100.0,   100.0,   50.0, 100.0,  70.0, 140.0, 25.0, 0 },  // glBSP (factor from -c)
+  {  100.0,   100.0,   50.0, 100.0,  70.0, 140.0, 25.0, 0, 0.0 },  // glBSP (factor from -c)
 
-  // The trial presets, best all-round one first.  Found by searching for
-  // the smallest lumps on a range of maps (small and very large).
-  { 6660.9,   249.7,   72.2,  16.9,   8.3,  32.4, 70.7, 15 },
-  { 8332.4,   110.2,  121.9,  78.4,  54.8, 140.0, 25.0, 11 },
-  { 3000.0,    50.0,   30.0,  50.0,  20.0, 100.0, 25.0, 11 },
-  {100000.0,   25.0,    0.0,   0.0,   0.0,   0.0, 25.0, 11 },
-  {100000.0,    1.0,    0.0,   0.0,   0.0,   0.0,  0.0, 11 }
+  // The trial presets, best all-round one first.  They were found with an
+  // evolutionary search for the smallest lumps over a range of maps (small
+  // and very large), then the two variants were picked as the pair that
+  // most often beats the first one on a particular map.  The "frag" weight
+  // charges every sector which the partition cuts in two (see FragCount).
+  { 2893.2,   292.8,  234.7,   3.4,   0.8,   5.2,  3.7, 15,  5511.9 },
+  { 2893.2,   292.8,  234.7,   3.4,   0.8,   5.2,  3.7, 15, 10000.0 },
+  { 2893.2,   500.0,  234.7,   3.4,   0.8,   5.2,  3.7, 15,  5511.9 },
+
+  // the previous best all-round preset (no sector term): a safety net, so
+  // that small maps are never larger than they used to be
+  { 6660.9,   249.7,   72.2,  16.9,   8.3,  32.4, 70.7, 15,     0.0 }
 };
 
 static cost_preset_t cur_cost;
@@ -101,6 +107,24 @@ static cost_preset_t cur_cost;
 void SetCostPreset(int index)
 {
   cur_cost = cost_presets[index];
+
+#ifdef BSP_TUNING
+  // development aid: BSP_P="split,balance,mini,near_r,near_l,iffy,diag,factor,frag"
+  // overrides preset 1 (used by the tools which tune the presets)
+  if (index == 1 && getenv("BSP_P"))
+  {
+    double v[9];
+
+    if (sscanf(getenv("BSP_P"), "%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf",
+        &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7], &v[8]) == 9)
+    {
+      cur_cost.split = v[0];  cur_cost.balance = v[1];  cur_cost.mini = v[2];
+      cur_cost.near_r = v[3]; cur_cost.near_l = v[4];   cur_cost.iffy = v[5];
+      cur_cost.diag = v[6];   cur_cost.factor = (int) v[7];
+      cur_cost.frag = v[8];
+    }
+  }
+#endif
 
   if (index == 0 || cur_cost.factor <= 0)
     cur_cost.factor = cur_info->factor;
@@ -592,6 +616,114 @@ static int EvalPartitionWorker(superblock_t *seg_list, seg_t *part,
   return FALSE;
 }
 
+// ---------------------------------------------------------------------
+// Sector fragmentation.  Every sector which has segs on both sides of
+// the partition is cut in two, which needs at least one more subsector
+// (and hence another node, SSECTORS entry and LEAFS list).  This is
+// only measured for partitions which survived the cheap tests, as it
+// has to look at every seg.
+// ---------------------------------------------------------------------
+
+static unsigned *frag_left = NULL;
+static unsigned *frag_right = NULL;
+static int frag_cap = 0;
+static unsigned frag_stamp = 0;
+static int frag_count;
+
+static void FragMark(seg_t *c, int left, int right)
+{
+  int i;
+
+  if (! c->sector)
+    return;
+
+  i = c->sector->index;
+
+  if (i < 0 || i >= frag_cap)
+    return;
+
+  if (left && frag_left[i] != frag_stamp)
+  {
+    frag_left[i] = frag_stamp;
+
+    if (frag_right[i] == frag_stamp)
+      frag_count++;
+  }
+
+  if (right && frag_right[i] != frag_stamp)
+  {
+    frag_right[i] = frag_stamp;
+
+    if (frag_left[i] == frag_stamp)
+      frag_count++;
+  }
+}
+
+static void FragWorker(superblock_t *block, seg_t *part)
+{
+  seg_t *c;
+  int num;
+
+  for (c=block->segs; c; c=c->next)
+  {
+    float_g a, b;
+
+    // same classification as EvalPartitionWorker() / DivideOneSeg()
+    if (c->source_line == part->source_line)
+    {
+      a = b = 0;
+    }
+    else
+    {
+      a = UtilPerpDist(part, c->psx, c->psy);
+      b = UtilPerpDist(part, c->pex, c->pey);
+    }
+
+    if (fabs(a) <= DIST_EPSILON && fabs(b) <= DIST_EPSILON)
+    {
+      if (c->pdx*part->pdx + c->pdy*part->pdy < 0)
+        FragMark(c, 1, 0);
+      else
+        FragMark(c, 0, 1);
+    }
+    else if (a > -DIST_EPSILON && b > -DIST_EPSILON)
+      FragMark(c, 0, 1);
+    else if (a < DIST_EPSILON && b < DIST_EPSILON)
+      FragMark(c, 1, 0);
+    else
+      FragMark(c, 1, 1);
+  }
+
+  for (num=0; num < 2; num++)
+  {
+    if (block->subs[num])
+      FragWorker(block->subs[num], part);
+  }
+}
+
+static int FragCount(superblock_t *seg_list, seg_t *part)
+{
+  if (frag_cap < num_sectors)
+  {
+    frag_cap = num_sectors;
+
+    frag_left  = (unsigned *) UtilRealloc(frag_left,  frag_cap * sizeof(unsigned));
+    frag_right = (unsigned *) UtilRealloc(frag_right, frag_cap * sizeof(unsigned));
+
+    memset(frag_left,  0, frag_cap * sizeof(unsigned));
+    memset(frag_right, 0, frag_cap * sizeof(unsigned));
+
+    frag_stamp = 0;
+  }
+
+  frag_stamp++;
+  frag_count = 0;
+
+  FragWorker(seg_list, part);
+
+  return frag_count;
+}
+
 //
 // EvalPartition
 //
@@ -657,6 +789,12 @@ static int EvalPartition(superblock_t *seg_list, seg_t *part,
   
   if (part->pdx != 0 && part->pdy != 0)
     info.cost += (int) cur_cost.diag;
+
+  if (cur_cost.frag > 0)
+  {
+    double t = (double) info.cost + cur_cost.frag * FragCount(seg_list, part);
+    info.cost = (t > 2000000000.0) ? 2000000000 : (int) t;
+  }
 
 # if DEBUG_PICKNODE
   PrintDebug("Eval %p: splits=%d iffy=%d near=%d left=%d+%d right=%d+%d "
@@ -757,6 +895,73 @@ static seg_t *FindFastSeg(superblock_t *seg_list, const bbox_t *bbox)
 }
 
 
+// ---------------------------------------------------------------------
+// Candidate de-duplication.  Segs lying on the same line, pointing the
+// same way, make exactly the same partition (the cost is identical), so
+// only the first one met needs evaluating.  Maps drawn on a grid have
+// many such segs, so this saves a lot of time.
+// ---------------------------------------------------------------------
+
+typedef struct line_key_s
+{
+  int a, b, d;
+  int used;
+}
+line_key_t;
+
+static line_key_t *line_table = NULL;
+static int line_table_cap = 0;
+static int line_table_mask = 0;
+
+static void LineTableReset(int count)
+{
+  int cap = 64;
+
+  while (cap < 2 * count)
+    cap *= 2;
+
+  if (cap > line_table_cap)
+  {
+    line_table = (line_key_t *) UtilRealloc(line_table, cap * sizeof(line_key_t));
+    line_table_cap = cap;
+  }
+
+  line_table_mask = cap - 1;
+  memset(line_table, 0, cap * sizeof(line_key_t));
+}
+
+// returns TRUE if a seg on the same line and direction was seen before
+static int LineSeenBefore(const seg_t *part)
+{
+  double ux = part->pdx / part->p_length;
+  double uy = part->pdy / part->p_length;
+  double d  = part->psy * ux - part->psx * uy;
+
+  int a = (int) floor(ux * 1000000.0 + 0.5);
+  int b = (int) floor(uy * 1000000.0 + 0.5);
+  int q = (int) floor(d * 64.0 + 0.5);
+
+  unsigned h = ((unsigned) a * 73856093u) ^ ((unsigned) b * 19349663u) ^
+               ((unsigned) q * 83492791u);
+  int i = (int) (h & (unsigned) line_table_mask);
+
+  for (;;)
+  {
+    line_key_t *e = line_table + i;
+
+    if (! e->used)
+    {
+      e->used = 1;  e->a = a;  e->b = b;  e->d = q;
+      return FALSE;
+    }
+
+    if (e->a == a && e->b == b && e->d == q)
+      return TRUE;
+
+    i = (i + 1) & line_table_mask;
+  }
+}
+
 /* returns FALSE if cancelled */
 static int PickNodeWorker(superblock_t *part_list, 
     superblock_t *seg_list, seg_t ** best, int *best_cost,
@@ -792,6 +997,10 @@ static int PickNodeWorker(superblock_t *part_list,
 
     /* ignore minisegs as partition candidates */
     if (! part->linedef)
+      continue;
+
+    /* same line as an earlier candidate ?  (see above) */
+    if (LineSeenBefore(part))
       continue;
     
     cost = EvalPartition(seg_list, part, *best_cost);
@@ -893,6 +1102,8 @@ seg_t *PickNode(superblock_t *seg_list, int depth, const bbox_t *bbox)
     }
   }
 
+
+  LineTableReset(seg_list->real_num);
 
   if (FALSE == PickNodeWorker(seg_list, seg_list, &best, &best_cost, 
       &progress, prog_step))

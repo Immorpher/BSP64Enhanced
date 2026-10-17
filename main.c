@@ -91,7 +91,6 @@ static void ShowOptions(void)
 
   TextPrintMsg(
     "Advanced Options:\n"
-    "  -v1 .. -v5         Version of GL-Nodes to use (1,2,3 or 5)\n"
     "  -m  -mergevert     Merge duplicate vertices\n" 
     "  -y  -windowfx      Handle the 'One-Sided Window' trick\n"
     "  -u  -prunesec      Remove unused sectors\n"

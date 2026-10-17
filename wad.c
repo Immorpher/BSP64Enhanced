@@ -1453,11 +1453,6 @@ void MarkHardFailure(int hard)
   wad.current_level->lev_info->hard_limit |= hard;
 }
 
-void MarkV5Switch(int v5)
-{
-  wad.current_level->lev_info->v5_switch |= v5;
-}
-
 void MarkZDSwitch(void)
 {
   level_t *lev = wad.current_level->lev_info;

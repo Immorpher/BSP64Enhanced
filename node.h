@@ -72,12 +72,6 @@ void ClockwiseBspTree(node_t *root);
 //
 void NormaliseBspTree(node_t *root);
 
-// traverse the BSP tree, doing whatever is necessary to round
-// vertices to integer coordinates (for example, removing segs whose
-// rounded coordinates degenerate to the same point).
-//
-void RoundOffBspTree(node_t *root);
-
 // free all the superblocks on the quick-alloc list
 void FreeQuickAllocSupers(void);
 

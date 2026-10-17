@@ -62,8 +62,6 @@ const nodebuildinfo_t default_buildinfo =
   FALSE,   // no_block_rem
   FALSE,   // fast
 
-  2,   // spec_version
-
   FALSE,   // load_all
   FALSE,   // no_normal
   FALSE,   // force_normal
@@ -243,14 +241,6 @@ glbsp_ret_e GlbspParseArgs(nodebuildinfo_t *info,
       continue;
     }
 
-    if (tolower(opt_str[0]) == 'v' && isdigit(opt_str[1]))
-    {
-      info->spec_version = (opt_str[1] - '0');
-
-      argv++; argc--;
-      continue;
-    }
-
     if (UtilStrCaseCmp(opt_str, "maxblock") == 0 ||
         UtilStrCaseCmp(opt_str, "b") == 0)
     {
@@ -381,19 +371,6 @@ glbsp_ret_e GlbspCheckInfo(nodebuildinfo_t *info,
     return GLBSP_E_BadInfoFixed;
   }
 
-  if (info->spec_version <= 0 || info->spec_version > 5)
-  {
-    info->spec_version = 2;
-    SetErrorMsg("Bad GL-Nodes version number !");
-    return GLBSP_E_BadInfoFixed;
-  }
-  else if (info->spec_version == 4)
-  {
-    info->spec_version = 5;
-    SetErrorMsg("V4 GL-Nodes is not supported");
-    return GLBSP_E_BadInfoFixed;
-  }
-
   if (info->block_limit < 1000 || info->block_limit > 64000)
   {
     info->block_limit = DEFAULT_BLOCK_LIMIT;
@@ -496,8 +473,8 @@ static glbsp_ret_e BuildLevelOnce(int preset, int final, long *score)
 }
 
 // Levels with more linedefs than this only use the first (best all-round)
-// preset: it gave the smallest lumps on every large map tested, while
-// each extra trial costs several seconds there.
+// preset: the other presets rarely win on large maps (and then only by a
+// fraction of a percent), while each extra trial costs seconds there.
 #define TRIALS_LINEDEF_LIMIT  4000
 
 static glbsp_ret_e HandleLevel(void)
@@ -517,6 +494,11 @@ static glbsp_ret_e HandleLevel(void)
     int last = (num_lines > TRIALS_LINEDEF_LIMIT) ? 1 : (NUM_COST_PRESETS - 1);
 
     best_preset = 1;
+
+#ifdef BSP_TUNING
+    if (getenv("BSP_ONLY"))
+      last = 1;
+#endif
 
     if (last > 1)
     {
@@ -546,6 +528,11 @@ static glbsp_ret_e HandleLevel(void)
       cur_comms->total_big_warn   = saved_big;
     }
   }
+
+#ifdef BSP_TUNING
+  if (getenv("BSP_ONLY"))
+    best_preset = atoi(getenv("BSP_ONLY"));
+#endif
 
   return BuildLevelOnce(best_preset, TRUE, NULL);
 }

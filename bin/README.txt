@@ -8,7 +8,7 @@ BSP64 Enhanced is designed to work with Doom Builder 64 Enhanced (https://github
 
 ## Usage
 
-In the Doom 64 map format, the "BLOCKMAP" and "SIDEDEFS" lumps are limited to 65535 bytes and 65535 side definitions respectively. BSP64 Enhanced will automatically compress these two lumps without any significant gameplay changes. This allows mappers to make larger maps (than without compression) without needing to manually edit their maps. Lines which lack tags, specials, flags which are involved with collisions, and which border sectors of identical floor and ceiling heights, will automatically excluded from the blockmap. Duplicate sidedefs which contain the same information will be merged, unless they are referenced by a linedef which has a tag, scroll flags or have switch display flags. 
+In the Doom 64 map format, the "BLOCKMAP" and "SIDEDEFS" lumps are limited to 65535 bytes and 65535 side definitions respectively. BSP64 Enhanced will automatically compress these two lumps without any significant gameplay changes. This allows mappers to make larger maps (than without compression) without needing to manually edit their maps. Lines which lack tags, specials, flags which are involved with collisions, and which border sectors of identical floor and ceiling heights, will automatically excluded from the blockmap. Duplicate sidedefs which contain the same information will be merged, unless they are referenced by a linedef which has a tag, scroll flags or have switch display flags. Sidedefs whose upper, lower and middle textures are all "BLANK" or "?" (missing) are also merged when only their X and Y offsets differ, since the offsets of a texture which is not drawn cannot be seen. 
 
 BSP64 Enhanced adds a few extra mapping features and a second more-aggressive blockmap compression mode as described in the following sections.
 
@@ -40,7 +40,6 @@ General Options:
   -nb -noblockrem    Don't remove lines from blockmap
 
 Advanced Options:
-  -v1 .. -v5         Version of GL-Nodes to use (1,2,3 or 5)
   -m  -mergevert     Merge duplicate vertices
   -y  -windowfx      Handle the 'One-Sided Window' trick
   -u  -prunesec      Remove unused sectors
@@ -57,6 +56,7 @@ Advanced Options:
 The VERTEXES, SEGS, SSECTORS, NODES and LEAFS lumps are kept as small as possible automatically, with no change to gameplay:
 
   - Pieces of the same linedef side which end up next to each other in one subsector (and collinear minisegs) are merged back into a single seg, and vertices which are no longer referenced are not written.
-  - The BSP tree is built with partition cost presets that avoid seg splits much more strongly than the classic glBSP cost. Maps with up to 4000 linedefs try five presets and keep the one giving the smallest lumps; larger maps use the best all-round preset directly, so build times stay short.
+  - The BSP tree is built with partition cost presets that avoid seg splits much more strongly than the classic glBSP cost, and that also charge every sector which a partition would cut in two (each cut sector needs at least one more subsector, node and LEAFS list). Maps with up to 4000 linedefs try four presets and keep the one giving the smallest lumps; larger maps use the best all-round preset directly, so build times stay short.
+  - Partition candidates lying on the same line in the same direction are evaluated only once, which makes the tree build about twice as fast.
 
 Using -c (split cost) or -f (fast) skips the preset search and uses the classic cost. -xt does the same without changing anything else.

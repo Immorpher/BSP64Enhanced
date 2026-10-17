@@ -359,6 +359,22 @@ static int SidedefSectorCompare(const sidedef_t *A, const sidedef_t *B)
   return CompareInts(A->sector->index, B->sector->index);
 }
 
+// Doom 64 does not draw the "BLANK" texture, and a "?" (missing) texture slot
+// is only ever a placeholder.  When all three slots of a sidedef hold one of
+// these, its X and Y offsets cannot be seen and so need not be compared.
+// (Sidedefs on scrollers, switches, tagged lines and so on never get here:
+// they are never merged, see SidedefClass().)  The values are the hashes of
+// the texture names that Doom 64 EX uses for the sidedef texture fields.
+#define TEXHASH_MISSING  111    // "?"
+#define TEXHASH_BLANK    58801  // "BLANK"
+
+static int SidedefOffsetsUnseen(const sidedef_t *S)
+{
+  return (S->upper_index == TEXHASH_BLANK || S->upper_index == TEXHASH_MISSING) &&
+         (S->lower_index == TEXHASH_BLANK || S->lower_index == TEXHASH_MISSING) &&
+         (S->mid_index   == TEXHASH_BLANK || S->mid_index   == TEXHASH_MISSING);
+}
+
 // returns zero when the two sidedefs can be merged into one
 static int SidedefEquivCompare(int side1, int side2)
 {
@@ -395,11 +411,21 @@ static int SidedefEquivCompare(int side1, int side2)
   result = SidedefSectorCompare(A, B);
   if (result != 0) return result;
 
-  result = CompareInts(A->x_offset, B->x_offset);
-  if (result != 0) return result;
+  // compare offsets, where the offsets of a sidedef which cannot show them
+  // count as zero.  (This must be done for each sidedef separately, to keep
+  // the comparison a proper ordering.)
+  {
+    int ax = SidedefOffsetsUnseen(A) ? 0 : A->x_offset;
+    int ay = SidedefOffsetsUnseen(A) ? 0 : A->y_offset;
+    int bx = SidedefOffsetsUnseen(B) ? 0 : B->x_offset;
+    int by = SidedefOffsetsUnseen(B) ? 0 : B->y_offset;
 
-  result = CompareInts(A->y_offset, B->y_offset);
-  if (result != 0) return result;
+    result = CompareInts(ax, bx);
+    if (result != 0) return result;
+
+    result = CompareInts(ay, by);
+    if (result != 0) return result;
+  }
 
   // compare textures
 
@@ -1130,16 +1156,8 @@ vertex_t *NewVertexFromSplitSeg(seg_t *seg, float_g x, float_g y)
 
   vert->ref_count = seg->partner ? 4 : 2;
 
-  if (lev_doing_normal && cur_info->spec_version == 1)
-  {
-    vert->index = num_normal_vert;
-    num_normal_vert++;
-  }
-  else
-  {
-    vert->index = num_gl_vert | IS_GL_VERTEX;
-    num_gl_vert++;
-  }
+  vert->index = num_gl_vert | IS_GL_VERTEX;
+  num_gl_vert++;
 
   // compute wall_tip info
 
@@ -1148,60 +1166,6 @@ vertex_t *NewVertexFromSplitSeg(seg_t *seg, float_g x, float_g y)
 
   VertexAddWallTip(vert, seg->pdx, seg->pdy,
       seg->partner ? seg->partner->sector : NULL, seg->sector);
-
-  // immorpher: the duplex "normal" vertex that used to be created here is never
-  // referenced by anything for Doom 64.  NormaliseSubsector() does not switch
-  // segs over to it and RoundOffBspTree() (the only user of normal_dup) is only
-  // run for spec version 1, which never created one.  It was written out to the
-  // VERTEXES lump as an exact copy of this vertex, so every seg split wasted
-  // 8 bytes.  Not creating it also leaves more room below the 16-bit limit
-  // on vertex indices.
-
-  return vert;
-}
-
-//
-// NewVertexDegenerate
-//
-vertex_t *NewVertexDegenerate(vertex_t *start, vertex_t *end)
-{
-  float_g dx = end->x - start->x;
-  float_g dy = end->y - start->y;
-
-  float_g dlen = UtilComputeDist(dx, dy);
-
-  vertex_t *vert = NewVertex();
-
-  vert->ref_count = start->ref_count;
-
-  if (lev_doing_normal)
-  {
-    vert->index = num_normal_vert;
-    num_normal_vert++;
-  }
-  else
-  {
-    vert->index = num_gl_vert | IS_GL_VERTEX;
-    num_gl_vert++;
-  }
-
-  // compute new coordinates
-
-  vert->x = start->x;
-  vert->y = start->x;
-
-  if (dlen == 0)
-    InternalError("NewVertexDegenerate: bad delta !");
-
-  dx /= dlen;
-  dy /= dlen;
-
-  while (I_ROUND(vert->x) == I_ROUND(start->x) && 
-         I_ROUND(vert->y) == I_ROUND(start->y))
-  {
-    vert->x += dx;
-    vert->y += dy;
-  }
 
   return vert;
 }
