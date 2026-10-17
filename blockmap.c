@@ -494,28 +494,191 @@ static void PrepareStepSafety(void)
   UtilFree(parent);
 }
 
+// Decides whether a line is left out of the blockmap.
+//   0 = keep it
+//   1 = always omit it (explicit flags, or identical sectors)
+//   2 = omit it only because of compress edges (a small floor difference)
+static int BlockLineRemoval(linedef_t *L)
+{
+  sector_t *sec1, *sec2;
+
+  if (cur_info->no_block_rem)
+    return 0;
+
+  if((L->flags & LINEFLAG_HIDE_AUTOMAP) && (L->flags & LINEFLAG_SHOW_AUTOMAP)) return 1; //dma: if both "show" and "hide" (on automap), then skip this line.
+
+  if(L->specials[1] & LINEFLAG_NO_BLOCKMAP) return 1; //immorpher: unused flag to hide line from blockmap
+
+  if ((L->flags & LINEFLAG_TWO_SIDED) && (L->tag == 0) && (L->specials[2] == 0) && (L->specials[3] == 0) && !(L->flags & LINEFLAG_IMPASSABLE) && !(L->flags & LINEFLAG_BLOCK_MONSTERS) && !(L->flags & LINEFLAG_BLOCK_PROJ) && !(L->specials[1] & LINEFLAG_BLOCK_PLAYER)) //immorpher: does the line have the right properties to be considered to be automatically excluded?
+  {
+    sec1 = L->right->sector;
+    sec2 = L->left->sector;
+
+    if(sec1->tag == sec2->tag) { // immorpher: do not compress if sectors might move due to different tags
+      if((sec1->floor_h == sec2->floor_h) && (sec1->ceil_h == sec2->ceil_h)) return 1; //immorpher: exclude sectors of same size and type from collisions
+      if(cur_info->comp_edge && (abs(sec1->floor_h - sec2->floor_h) <= 16) && ((sec1->ceil_h - sec2->floor_h) >= 64) && ((sec2->ceil_h - sec1->floor_h) >= 64)) return 2; //immorpher: if compress edges enabled allow for more leeway in compressing edges
+    }
+  }
+
+  return 0;
+}
+
+static int BlockLineIsOmitted(linedef_t *L)
+{
+  int r = BlockLineRemoval(L);
+
+  if (r == 2 && block_keep && block_keep[L->index])
+    return FALSE;
+
+  return (r != 0);
+}
+
+
+/* ----- compress-edges hang down safety ------------------------- */
+
+// A ceiling that hangs lower than the player fits under (64 units) blocks
+// a player who is standing on a ledge, because the line in front of the hang
+// down raises the ceiling check.  Players who fall off the ledge and are
+// lower are not stopped by it.  When the lines of such a hang down are left out
+// of the blockmap, a player can push their 19 unit radius box into it.  They
+// normally fall off the ledge first, unless the ledge line is so close that
+// the player's centre cannot get past it (no room to fall).  The lines of a
+// hang down are kept when a ledge line lies this close to them and runs
+// alongside them.
+#define HANG_PLAYER_HEIGHT   64
+#define HANG_PLAYER_RADIUS   19.0
+#define HANG_MARGIN          0.5     // reach of the ledge contact test
+
+static double HangPointSegDist(double px, double py, double ax, double ay,
+    double bx, double by)
+{
+  double dx = bx - ax, dy = by - ay;
+  double len2 = dx*dx + dy*dy;
+  double t = (len2 > 0) ? ((px-ax)*dx + (py-ay)*dy) / len2 : 0;
+
+  if (t < 0) t = 0;
+  if (t > 1) t = 1;
+
+  return UtilComputeDist(px - (ax + t*dx), py - (ay + t*dy));
+}
+
+static int HangSegCross(double ax, double ay, double bx, double by,
+    double cx, double cy, double dx, double dy)
+{
+  double d1 = (bx-ax)*(cy-ay) - (by-ay)*(cx-ax);
+  double d2 = (bx-ax)*(dy-ay) - (by-ay)*(dx-ax);
+  double d3 = (dx-cx)*(ay-cy) - (dy-cy)*(ax-cx);
+  double d4 = (dx-cx)*(by-cy) - (dy-cy)*(bx-cx);
+
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+         ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+// distance between two segments
+static double HangSegDist(const linedef_t *L, const linedef_t *E)
+{
+  double lx1 = L->start->x, ly1 = L->start->y, lx2 = L->end->x, ly2 = L->end->y;
+  double ex1 = E->start->x, ey1 = E->start->y, ex2 = E->end->x, ey2 = E->end->y;
+  double d, best;
+
+  if (HangSegCross(lx1, ly1, lx2, ly2, ex1, ey1, ex2, ey2))
+    return 0;
+
+  best = HangPointSegDist(lx1, ly1, ex1, ey1, ex2, ey2);
+  d = HangPointSegDist(lx2, ly2, ex1, ey1, ex2, ey2);  if (d < best) best = d;
+  d = HangPointSegDist(ex1, ey1, lx1, ly1, lx2, ly2);  if (d < best) best = d;
+  d = HangPointSegDist(ex2, ey2, lx1, ly1, lx2, ly2);  if (d < best) best = d;
+
+  return best;
+}
+
+// does the ledge line E run alongside the hang down line L, close enough that
+// the player standing at the ledge cannot clear the hang down ?
+static int HangLedgeIsClose(const linedef_t *L, const linedef_t *E)
+{
+  double lx = L->end->x - L->start->x, ly = L->end->y - L->start->y;
+  double ex = E->end->x - E->start->x, ey = E->end->y - E->start->y;
+  double llen = UtilComputeDist(lx, ly);
+  double elen = UtilComputeDist(ex, ey);
+  double t1, t2, lo, hi;
+
+  if (llen <= 0 || elen <= 0)
+    return FALSE;
+
+  // roughly parallel (within 45 degrees)
+  if (fabs(lx*ey - ly*ex) / (llen * elen) > 0.7072)
+    return FALSE;
+
+  // must overlap along the hang down line, not merely touch at a corner
+  t1 = ((E->start->x - L->start->x)*lx + (E->start->y - L->start->y)*ly) / llen;
+  t2 = ((E->end->x   - L->start->x)*lx + (E->end->y   - L->start->y)*ly) / llen;
+
+  lo = (t1 < t2) ? t1 : t2;
+  hi = (t1 < t2) ? t2 : t1;
+
+  if (lo < 0)    lo = 0;
+  if (hi > llen) hi = llen;
+
+  if (hi - lo <= 1.0)
+    return FALSE;
+
+  return HangSegDist(L, E) <= HANG_PLAYER_RADIUS + HANG_MARGIN;
+}
+
+static void PrepareHangSafety(void)
+{
+  int i, j;
+
+  for (i=0; i < num_linedefs; i++)
+  {
+    linedef_t *L = LookupLinedef(i);
+    int low_ceil;
+
+    if (L->zero_len || block_keep[i])
+      continue;
+
+    if (BlockLineRemoval(L) != 2)
+      continue;
+
+    // only a ceiling step can hang down over a player
+    if (L->right->sector->ceil_h == L->left->sector->ceil_h)
+      continue;
+
+    low_ceil = (L->right->sector->ceil_h < L->left->sector->ceil_h) ?
+        L->right->sector->ceil_h : L->left->sector->ceil_h;
+
+    for (j=0; j < num_linedefs; j++)
+    {
+      linedef_t *E = LookupLinedef(j);
+      int ledge;
+
+      if (j == i || E->zero_len || ! E->right || ! E->left)
+        continue;
+
+      if (BlockLineIsOmitted(E))
+        continue;
+
+      // height the player stands at when touching this line
+      ledge = (E->right->sector->floor_h > E->left->sector->floor_h) ?
+          E->right->sector->floor_h : E->left->sector->floor_h;
+
+      if (low_ceil - ledge >= HANG_PLAYER_HEIGHT)
+        continue;
+
+      if (HangLedgeIsClose(L, E))
+      {
+        block_keep[i] = 1;
+        break;
+      }
+    }
+  }
+}
+
 //dma: 2-11-25: allow for ignoring certain lines from blockmap addition
 static void BlockAddLine(linedef_t *L)
 {
-  sector_t *sec1, *sec2;
-  
-  if(!cur_info->no_block_rem)
-  {
-	if((L->flags & LINEFLAG_HIDE_AUTOMAP) && (L->flags & LINEFLAG_SHOW_AUTOMAP)) return; //dma: if both "show" and "hide" (on automap), then skip this line.
-
-	if(L->specials[1] & LINEFLAG_NO_BLOCKMAP) return; //immorpher: unused flag to hide line from blockmap
-
-	if ((L->flags & LINEFLAG_TWO_SIDED) && (L->tag == 0) && (L->specials[2] == 0) && (L->specials[3] == 0) && !(L->flags & LINEFLAG_IMPASSABLE) && !(L->flags & LINEFLAG_BLOCK_MONSTERS) && !(L->flags & LINEFLAG_BLOCK_PROJ) && !(L->specials[1] & LINEFLAG_BLOCK_PLAYER)) //immorpher: does the line have the right properties to be considered to be automatically excluded?
-	{
-		sec1 = L->right->sector;
-		sec2 = L->left->sector;
-		
-		if(sec1->tag == sec2->tag) { // immorpher: do not compress if sectors might move due to different tags
-			if((sec1->floor_h == sec2->floor_h) && (sec1->ceil_h == sec2->ceil_h)) return; //immorpher: exclude sectors of same size and type from collisions
-			if(cur_info->comp_edge && !(block_keep && block_keep[L->index]) && (abs(sec1->floor_h - sec2->floor_h) <= 16) && ((sec1->ceil_h - sec2->floor_h) >= 64) && ((sec2->ceil_h - sec1->floor_h) >= 64)) return; //immorpher: if compress edges enabled allow for more leeway in compressing edges
-		}
-	}
-  }
+  if (BlockLineIsOmitted(L))
+    return;
 
   int x1 = (int) L->start->x;
   int y1 = (int) L->start->y;
@@ -592,7 +755,10 @@ static void CreateBlockmap(void)
   block_lines = UtilCalloc(block_count * sizeof(uint16_g *));
 
   if (cur_info->comp_edge && ! cur_info->no_block_rem)
+  {
     PrepareStepSafety();
+    PrepareHangSafety();
+  }
 
   DisplayTicker();
 
