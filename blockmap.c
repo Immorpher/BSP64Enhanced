@@ -834,7 +834,10 @@ static void CompressBlockmap(void)
 
   // scan duplicate array and build up offset array
 
-  cur_offset = 4 + block_count + 2; //dma: ?
+  // Doom 64 blocklists are headerless (as in the original Midway maps):
+  // each list is just the linedef numbers followed by -1, and empty blocks
+  // all share one list consisting of only the -1 terminator.
+  cur_offset = 4 + block_count + 1;
 
   orig_size = 4 + block_count;
   new_size  = cur_offset;
@@ -856,9 +859,7 @@ static void CompressBlockmap(void)
       continue;
     }
 
-    //dma: ?
-    count = 2 + block_lines[blk_num][BK_NUM];
-    //count = block_lines[blk_num][BK_NUM];
+    count = 1 + block_lines[blk_num][BK_NUM];
 
     // duplicate ?  Only the very last one of a sequence of duplicates
     // will update the current offset value.
@@ -920,8 +921,6 @@ static void WriteBlockmap(void)
 
   lump_t *lump = CreateLevelLump("BLOCKMAP");
 
-  uint16_g null_block[2] = { 0x0000, 0xFFFF };
-  uint16_g m_zero = 0x0000;
   uint16_g m_neg1 = 0xFFFF;
   
   // leave empty if the blockmap overflowed
@@ -947,8 +946,8 @@ static void WriteBlockmap(void)
     AppendLevelLump(lump, &ptr, sizeof(uint16_g));
   }
 
-  // add the null block which _all_ empty blocks will use
-  AppendLevelLump(lump, null_block, sizeof(null_block));
+  // add the null block which _all_ empty blocks will use (just the terminator)
+  AppendLevelLump(lump, &m_neg1, sizeof(uint16_g));
 
   // handle each block list
   for (i=0; i < block_count; i++)
@@ -965,8 +964,6 @@ static void WriteBlockmap(void)
     if (blk == NULL)
       InternalError("WriteBlockmap: block %d is NULL !", i);
 
-    //dma: 2-14-2025: remove unnecessary header/footer? doesn't seem to work on remaster
-    AppendLevelLump(lump, &m_zero, sizeof(uint16_g));
     AppendLevelLump(lump, blk + BK_FIRST, blk[BK_NUM] * sizeof(uint16_g));
     AppendLevelLump(lump, &m_neg1, sizeof(uint16_g));
   }
