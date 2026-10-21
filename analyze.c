@@ -52,7 +52,6 @@ extern linedef_t ** lev_linedefs;
 extern sidedef_t ** lev_sidedefs;
 extern sector_t  ** lev_sectors;
 
-int numcompressed = 0;
 
 
 /* ----- analysis routines ----------------------------- */
@@ -479,7 +478,6 @@ void PruneSidedefs(void)
       PrintVerbose("Pruned %d duplicate sidedefs\n", dup_num);
 
     num_sidedefs = new_num;
-    numcompressed = new_num;
   }
 
   if (new_num == 0)

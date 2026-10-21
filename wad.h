@@ -65,17 +65,11 @@ typedef struct level_s
   // the child lump list
   struct lump_s *children;
 
-  // for normal levels, this is the associated GL level lump
-  struct lump_s *buddy;
-
   // information on overflow
   int soft_limit;
   int hard_limit;
 }
 level_t;
-
-/* this level information holds GL lumps */
-#define LEVEL_IS_GL      0x0002
 
 /* limit flags, to show what went wrong */
 #define LIMIT_VERTEXES     0x000001
@@ -86,11 +80,6 @@ level_t;
 #define LIMIT_SEGS         0x000010
 #define LIMIT_SSECTORS     0x000020
 #define LIMIT_NODES        0x000040
-
-#define LIMIT_GL_VERT      0x000100
-#define LIMIT_GL_SEGS      0x000200
-#define LIMIT_GL_SSECT     0x000400
-#define LIMIT_GL_NODES     0x000800
 
 #define LIMIT_BAD_SIDE     0x001000
 #define LIMIT_BMAP_TRUNC   0x002000
@@ -186,13 +175,11 @@ const char *GetLevelName(void);
 lump_t *FindLevelLump(const char *name);
 
 // tests if the level lump contains nothing but zeros.
-int CheckLevelLumpZero(lump_t *lump);
 
 // create a new lump in the current level with the given name.  If
 // such a lump already exists, it is truncated to zero length.
 //
 lump_t *CreateLevelLump(const char *name);
-lump_t *CreateGLLump(const char *name);
 
 // append some raw data to the end of the given level lump (created
 // with the above function).
@@ -201,7 +188,6 @@ void AppendLevelLump(lump_t *lump, const void *data, int length);
 
 // for the current GL lump, add a keyword/value pair into the
 // level marker lump.
-void AddGLTextLine(const char *keyword, const char *value);
 
 // Zlib compression support
 //void ZLibBeginLump(lump_t *lump);

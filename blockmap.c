@@ -40,7 +40,6 @@
 
 #define DEBUG_BLOCKMAP  0
 
-extern int block_AutoSelfRef;
 
 static int block_x, block_y;
 static int block_w, block_h;

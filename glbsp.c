@@ -42,7 +42,6 @@ const nodebuildinfo_t *cur_info = NULL;
 const nodebuildfuncs_t *cur_funcs = NULL;
 volatile nodebuildcomms_t *cur_comms = NULL;
 
-int block_AutoSelfRef = 0;
 
 
 const nodebuildinfo_t default_buildinfo =

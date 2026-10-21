@@ -62,19 +62,12 @@ static wad_t wad;
 
 
 #define NUM_LEVEL_LUMPS  13
-#define NUM_GL_LUMPS     5
 
 static const char *level_lumps[NUM_LEVEL_LUMPS]=
 {
   "THINGS", "LINEDEFS", "SIDEDEFS", "VERTEXES", "SEGS", 
   "SSECTORS", "NODES", "SECTORS", "REJECT", "BLOCKMAP",
   "LEAFS", "LIGHTS", "MACROS"
-};
-
-static const char *gl_lumps[NUM_GL_LUMPS]=
-{
-  "GL_VERT", "GL_SEGS", "GL_SSECT", "GL_NODES",
-  "GL_PVS"  // -JL- PVS (Potentially Visible Set) lump
 };
 
 static const char align_filler[4] = { 0, 0, 0, 0 };
@@ -129,29 +122,6 @@ static int CheckLevelLumpName(const char *name)
   }
  
   return 0;
-}
-
-
-//
-// CheckGLLumpName
-//
-// Tests if the entry name matches GL_ExMy or GL_MAPxx, or one of the
-// GL lump names.
-//
-static int CheckGLLumpName(const char *name)
-{
-  int i;
-
-  if (name[0] != 'G' || name[1] != 'L' || name[2] != '_')
-    return FALSE;
-
-  for (i=0; i < NUM_GL_LUMPS; i++)
-  {
-    if (strcmp(name, gl_lumps[i]) == 0)
-      return TRUE;
-  }
-  
-  return CheckLevelName(name+3);
 }
 
 
@@ -389,19 +359,6 @@ static void ProcessDirEntry(lump_t *lump)
 {
   DisplayTicker();
 
-  // ignore previous GL lump info
-  if (CheckGLLumpName(lump->name))
-  {
-#   if DEBUG_DIR
-    PrintDebug("Discarding previous GL info: %s\n", lump->name);
-#   endif
-
-    FreeLump(lump);
-    wad.num_entries--;
-
-    return;
-  }
-
   // --- LEVEL MARKERS ---
 
   if (CheckLevelName(lump->name))
@@ -591,7 +548,7 @@ static int ReadAllLumps(void)
     if (cur->flags & LUMP_READ_ME)
       ReadLumpData(cur);
 
-    if (cur->lev_info && ! (cur->lev_info->flags & LEVEL_IS_GL))
+    if (cur->lev_info)
     {
       for (L=cur->lev_info->children; L; L=L->next)
       {
@@ -665,51 +622,6 @@ static void WriteHeader(void)
 
   if (len != 1)
     PrintWarn("Trouble writing wad header\n");
-}
-
-
-//
-// CreateGLMarker
-//
-lump_t *CreateGLMarker(void)
-{
-  lump_t *level = wad.current_level;
-  lump_t *cur;
-
-  char name_buf[32];
-  boolean_g long_name = FALSE;
-
-  if (strlen(level->name) <= 5)
-  {
-    sprintf(name_buf, "GL_%s", level->name);
-  }
-  else
-  {
-    // support for level names longer than 5 letters
-    strcpy(name_buf, "GL_LEVEL");
-    long_name = TRUE;
-  }
-
-  cur = NewLump(UtilStrDup(name_buf));
-
-  cur->lev_info = NewLevel(LEVEL_IS_GL);
-
-  // link it in
-  cur->next = level->next;
-  cur->prev = level;
-
-  if (cur->next)
-    cur->next->prev = cur;
-
-  level->next = cur;
-  level->lev_info->buddy = cur;
-
-  if (long_name)
-  {
-    AddGLTextLine("LEVEL", level->name);
-  }
-
-  return cur;
 }
 
 
@@ -788,10 +700,7 @@ static void RecomputeDirectory(void)
 
     if (lev)
     {
-      if (lev->flags & LEVEL_IS_GL)
-        SortLumps(&lev->children, gl_lumps, NUM_GL_LUMPS);
-      else
-        SortLumps(&lev->children, level_lumps, NUM_LEVEL_LUMPS);
+      SortLumps(&lev->children, level_lumps, NUM_LEVEL_LUMPS);
 
       for (L=lev->children; L; L=L->next)
       {
@@ -1031,59 +940,6 @@ lump_t *CreateLevelLump(const char *name)
 
 
 //
-// CreateGLLump
-//
-lump_t *CreateGLLump(const char *name)
-{
-  lump_t *cur;
-  lump_t *gl_level;
-
-# if DEBUG_DIR
-  PrintDebug("Create GL Lump... %s\n", name);
-# endif
-
-  // create GL level marker if necessary
-  if (! wad.current_level->lev_info->buddy)
-    CreateGLMarker();
-  
-  gl_level = wad.current_level->lev_info->buddy;
-
-  // check if already exists
-  for (cur=gl_level->lev_info->children; cur; cur=cur->next)
-  {
-    if (strcmp(name, cur->name) == 0)
-      break;
-  }
-
-  if (cur)
-  {
-    if (cur->data)
-      UtilFree(cur->data);
-    
-    cur->data = NULL;
-    cur->length = 0;
-    cur->space  = 0;
-
-    return cur;
-  }
-
-  // nope, allocate new one
-  cur = NewLump(UtilStrDup(name));
-
-  // link it in
-  cur->next = gl_level->lev_info->children;
-  cur->prev = NULL;
-
-  if (cur->next)
-    cur->next->prev = cur;
-
-  gl_level->lev_info->children = cur;
-
-  return cur;
-}
-
-
-//
 // AppendLevelLump
 //
 void AppendLevelLump(lump_t *lump, const void *data, int length)
@@ -1110,31 +966,6 @@ void AppendLevelLump(lump_t *lump, const void *data, int length)
 
 
 //
-// AddGLTextLine
-//
-void AddGLTextLine(const char *keyword, const char *value)
-{
-  lump_t *gl_level;
-
-  // create GL level marker if necessary
-  if (! wad.current_level->lev_info->buddy)
-    CreateGLMarker();
-
-  gl_level = wad.current_level->lev_info->buddy;
-
-# if DEBUG_KEYS
-  PrintDebug("[%s] Adding: %s=%s\n", gl_level->name, keyword, value);
-# endif
-
-  AppendLevelLump(gl_level, keyword, (int)strlen(keyword));
-  AppendLevelLump(gl_level, "=", 1);
-
-  AppendLevelLump(gl_level, value, (int)strlen(value));
-  AppendLevelLump(gl_level, "\n", 1);
-}
-
-
-//
 // CountLevels
 //
 int CountLevels(void)
@@ -1144,7 +975,7 @@ int CountLevels(void)
   
   for (cur=wad.dir_head; cur; cur=cur->next)
   {
-    if (cur->lev_info && ! (cur->lev_info->flags & LEVEL_IS_GL))
+    if (cur->lev_info)
       result++;
   }
 
@@ -1163,7 +994,7 @@ int FindNextLevel(void)
   else
     cur = wad.dir_head;
 
-  while (cur && ! (cur->lev_info && ! (cur->lev_info->flags & LEVEL_IS_GL)))
+  while (cur && ! cur->lev_info)
     cur=cur->next;
 
   wad.current_level = cur;
@@ -1193,27 +1024,6 @@ lump_t *FindLevelLump(const char *name)
     cur=cur->next;
 
   return cur;
-}
-
-//
-// CheckLevelLumpZero
-//
-int CheckLevelLumpZero(lump_t *lump)
-{
-  int i;
-  
-  if (lump->length == 0)
-    return TRUE;
-  
-  // ASSERT(lump->data)
-
-  for (i=0; i < lump->length; i++)
-  {
-    if (((uint8_g *)lump->data)[i])
-      return FALSE;
-  }
-
-  return TRUE;
 }
 
 //
@@ -1413,11 +1223,6 @@ void ReportOneOverflow(const lump_t *lump, int limit, boolean_g hard)
     case LIMIT_SSECTORS: PrintMsg("Number of Subsectors %s.\n", msg); break;
     case LIMIT_NODES:    PrintMsg("Number of Nodes %s.\n", msg); break;
 
-    case LIMIT_GL_VERT:  PrintMsg("Number of GL vertices %s.\n", msg); break;
-    case LIMIT_GL_SEGS:  PrintMsg("Number of GL segs %s.\n", msg); break;
-    case LIMIT_GL_SSECT: PrintMsg("Number of GL subsectors %s.\n", msg); break;
-    case LIMIT_GL_NODES: PrintMsg("Number of GL nodes %s.\n", msg); break;
-
     case LIMIT_BAD_SIDE:   PrintMsg("One or more linedefs has a bad sidedef.\n"); break;
     case LIMIT_BMAP_TRUNC: PrintMsg("Blockmap area was too big - truncated.\n"); break;
     case LIMIT_BLOCKMAP:   PrintMsg("Blockmap lump %s.\n", msg); break;
@@ -1454,7 +1259,7 @@ void ReportOverflows(boolean_g hard)
 
     int limits, one_lim;
 
-    if (! (lev && ! (lev->flags & LEVEL_IS_GL)))
+    if (! lev)
       continue;
 
     limits = hard ? lev->hard_limit : lev->soft_limit;
@@ -1484,7 +1289,7 @@ void ReportFailedLevels(void)
  
   for (cur=wad.dir_head; cur; cur=cur->next)
   {
-    if (! (cur->lev_info && ! (cur->lev_info->flags & LEVEL_IS_GL)))
+    if (! cur->lev_info)
       continue;
 
     if (cur->lev_info->soft_limit != 0) fail_soft++;

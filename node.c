@@ -1098,7 +1098,6 @@ void NormaliseBspTree(node_t *root)
 
 int compact_stat_segs  = 0;
 int compact_stat_minis = 0;
-int compact_stat_verts = 0;
 
 #define COMPACT_EPS  (1.0 / 128.0)
 

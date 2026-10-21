@@ -85,6 +85,6 @@ void CompactBspTree(node_t *root);
 // estimated byte size of the tree dependent lumps (for trial builds)
 long ComputeTreeScore(void);
 
-extern int compact_stat_segs, compact_stat_minis, compact_stat_verts;
+extern int compact_stat_segs, compact_stat_minis;
 
 #endif /* __GLBSP_NODE_H__ */

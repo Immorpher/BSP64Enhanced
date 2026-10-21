@@ -72,10 +72,6 @@ static LEVELARRAY(subsec_t,  subsecs,    num_subsecs)
 static LEVELARRAY(node_t,    nodes,      num_nodes)
 static LEVELARRAY(wall_tip_t,wall_tips,  num_wall_tips)
 
-int32_t compressed_links[65536];
-
-extern int numcompressed;
-
 int num_normal_vert = 0;
 int num_gl_vert = 0;
 int num_complete_seg = 0;
@@ -187,45 +183,12 @@ sidedef_t *LookupSidedef(int index)
 sector_t *LookupSector(int index)
   LOOKERUPPER(lev_sectors, num_sectors, "sector")
   
-thing_t *LookupThing(int index)
-  LOOKERUPPER(lev_things, num_things, "thing")
-  
-seg_t *LookupSeg(int index)
-  LOOKERUPPER(segs, num_segs, "seg")
-  
 subsec_t *LookupSubsec(int index)
   LOOKERUPPER(subsecs, num_subsecs, "subsector")
   
-node_t *LookupNode(int index)
-  LOOKERUPPER(nodes, num_nodes, "node")
-
 
 /* ----- reading routines ------------------------------ */
 
-
-//
-// CheckForNormalNodes
-//
-int CheckForNormalNodes(void)
-{
-  lump_t *lump;
-  
-  /* Note: an empty NODES lump can be valid */
-  if (FindLevelLump("NODES") == NULL)
-    return FALSE;
- 
-  lump = FindLevelLump("SEGS");
-  
-  if (! lump || lump->length == 0 || CheckLevelLumpZero(lump))
-    return FALSE;
-
-  lump = FindLevelLump("SSECTORS");
-  
-  if (! lump || lump->length == 0 || CheckLevelLumpZero(lump))
-    return FALSE;
-
-  return TRUE;
-}
 
 //
 // GetVertices
@@ -584,21 +547,29 @@ static int SegCompare(const void *p1, const void *p2)
 
 static int real_vert_num = 0;
 
-void PutVertices(char *name, int do_gl)
+// number of vertices that the Doom 64 engine can index
+#ifndef VERTEX_SOFT_LIMIT
+#define VERTEX_SOFT_LIMIT  32768   // signed 16-bit index (original engine)
+#endif
+#ifndef VERTEX_HARD_LIMIT
+#define VERTEX_HARD_LIMIT  65536   // unsigned 16-bit index (file format)
+#endif
+
+void PutVertices(void)
 {
   int count, i;
   lump_t *lump;
 
   DisplayTicker();
 
-  lump = CreateLevelLump(name);
+  lump = CreateLevelLump("VERTEXES");
 
   for (i=0, count=0; i < num_vertices; i++)
   {
     raw_vertex_t raw;
     vertex_t *vert = lev_vertices[i];
 
-	if(!do_gl && (vert->index & IS_GL_VERTEX))
+	if(vert->index & IS_GL_VERTEX)
       continue;
 
     raw.x = SINT32((int)(vert->x * 65536.0));
@@ -636,16 +607,16 @@ void PutVertices(char *name, int do_gl)
 
       AppendLevelLump(lump, &raw, sizeof(raw));
     }
+    count = real_vert_num + gl_count;
   }
 
-  /*if (count != (do_gl ? num_gl_vert : num_normal_vert))
-    InternalError("PutVertices miscounted (%d != %d)", count,
-      do_gl ? num_gl_vert : num_normal_vert);
-
-  if (! do_gl && count > 65534)
+  // Vertex numbers are int16 in the Doom 64 engine (the original reads
+  // them as signed shorts), so only indices 0..32767 are valid there.
+  // The file format itself has 16 bits for the number.
+  if (count > VERTEX_HARD_LIMIT)
     MarkHardFailure(LIMIT_VERTEXES);
-  else if (count > 32767)
-    MarkSoftFailure(do_gl ? LIMIT_GL_VERT : LIMIT_VERTEXES);*/
+  else if (count > VERTEX_SOFT_LIMIT)
+    MarkSoftFailure(LIMIT_VERTEXES);
 }
 
 void PutLeafs(void)
@@ -860,17 +831,14 @@ void PutSegs(void)
     MarkSoftFailure(LIMIT_SEGS);
 }
 
-void PutSubsecs(char *name, int do_gl)
+void PutSubsecs(void)
 {
   int i;
   lump_t *lump;
 
   DisplayTicker();
 
-  //if (do_gl)
-    //lump = CreateGLLump(name);
-  //else
-    lump = CreateLevelLump(name);
+  lump = CreateLevelLump("SSECTORS");
 
   for (i=0; i < num_subsecs; i++)
   {
@@ -889,7 +857,7 @@ void PutSubsecs(char *name, int do_gl)
   }
 
   if (num_subsecs > 32767)
-    MarkHardFailure(do_gl ? LIMIT_GL_SSECT : LIMIT_SSECTORS);
+    MarkHardFailure(LIMIT_SSECTORS);
 }
 
 static int node_cur_index;
@@ -1046,7 +1014,7 @@ void FreeLevel(void)
 //
 void SaveLevel(node_t *root_node)
 {
-  PutVertices("VERTEXES", FALSE);
+  PutVertices();
   PutLeafs();
 
   NormaliseBspTree(root_node);
@@ -1055,7 +1023,7 @@ void SaveLevel(node_t *root_node)
   PutSidedefs();
   PutLinedefs();
   PutSegs();
-  PutSubsecs("SSECTORS", FALSE);
+  PutSubsecs();
   PutNodes("NODES", root_node);
 
   PutBlockmap();

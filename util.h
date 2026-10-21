@@ -63,7 +63,6 @@ int UtilStrCaseCmp(const char *A, const char *B);
 
 // return an allocated string for the current data and time,
 // or NULL if an error occurred.
-char *UtilTimeString(void);
 
 // round a positive value up to the nearest power of two.
 int UtilRoundPOW2(int x);
@@ -84,10 +83,7 @@ angle_g UtilComputeAngle(float_g dx, float_g dy);
      / (part)->p_length)
 
 // check if the file exists.
-int UtilFileExists(const char *filename);
 
 // checksum functions
-void Adler32_Begin(uint32_g *crc);
-void Adler32_AddBlock(uint32_g *crc, const uint8_g *data, int length);
 
 #endif /* __GLBSP_UTIL_H__ */

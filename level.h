@@ -403,13 +403,9 @@ vertex_t *LookupVertex(int index);
 linedef_t *LookupLinedef(int index);
 sidedef_t *LookupSidedef(int index);
 sector_t *LookupSector(int index);
-thing_t *LookupThing(int index);
-seg_t *LookupSeg(int index);
 subsec_t *LookupSubsec(int index);
-node_t *LookupNode(int index);
 
 // check whether the current level already has normal nodes
-int CheckForNormalNodes(void);
 
 // load all level data for the current level
 void LoadLevel(void);
