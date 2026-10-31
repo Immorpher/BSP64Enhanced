@@ -1,6 +1,6 @@
 # BSP64 Enhanced
 
-This is a nodebuilder for Doom 64 which has blockmap optimization, sidedef compression, and reject editing features. It is a fork of Diema's DMA-BSP64 (https://github.com/darkhaven3/dma-bsp64) which adds features from ZokumBSP (https://doomwiki.org/wiki/ZokumBSP) to Kaiser's D64BSP (https://github.com/MP2E/d64bsp), which is based on glBSP (https://doomwiki.org/wiki/GlBSP), which is further based on the original BSP (https://doomwiki.org/wiki/BSP_(node_builder)). 
+This is a multi-threaded nodebuilder for Doom 64 which has blockmap optimization, sidedef compression, and reject editing features. It is a fork of Diema's DMA-BSP64 (https://github.com/darkhaven3/dma-bsp64) which adds features from ZokumBSP (https://doomwiki.org/wiki/ZokumBSP) to Kaiser's D64BSP (https://github.com/MP2E/d64bsp), which is based on glBSP (https://doomwiki.org/wiki/GlBSP), which is further based on the original BSP (https://doomwiki.org/wiki/BSP_(node_builder)). 
 
 ## Installation
 
@@ -18,7 +18,11 @@ Lines can be manually omitted from the blockmap by using the "No Blockmap" (0x10
 
 Lines of the same tag can be forced to merge their sidedefs, with the "Merge Sides" (0x20000000) flag. This forced merger can allow texture scrolling at faster speeds and multiple switches to be activated at once.
 
-Sectors can be removed from the "REJECT" lump with the special 999 (Blind To Monsters). It can be used to break a monster's line of sight from or to a sector, making them effectively blind to things outside of their sector or at a specific sector.
+### Reject
+
+From ZokumBSP, the "REJECT" lump is built from real line of sight between sectors. A sector pair is hidden only when no straight line can run between them without crossing a one-sided line.
+
+Sectors can be removed from the "REJECT" lump with the special 999 (Blind To Monsters). Such a sector is hidden from every other sector and sees none of them, which makes monsters blind to things in or at that sector.
 
 ### Compress Edges Mode
 

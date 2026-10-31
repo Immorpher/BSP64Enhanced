@@ -2,9 +2,9 @@ EXECUTABLE=BSP64Enhanced.exe
 DEBUGNAME=BSP64Enhanced-debug.exe
  
 CC="C:\msys64\mingw32\bin\gcc.exe"
-LDFLAGS=-lmingw32
+LDFLAGS=-lmingw32 -pthread -static
 
-CFLAGS = -O2 -Wall -Wno-unknown-pragmas
+CFLAGS = -O2 -Wall -Wno-unknown-pragmas -pthread
  
 src = $(wildcard *.c)
 obj = $(src:.c=.o)

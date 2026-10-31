@@ -18,7 +18,11 @@ Lines can be manually omitted from the blockmap by using the "No Blockmap" (0x10
 
 Lines of the same tag can be forced to merge their sidedefs, with the "Merge Sides" (0x20000000) flag. This forced merger can allow texture scrolling at faster speeds and multiple switches to be activated at once.
 
-Sectors can be removed from the "REJECT" lump with the special 999 (Blind To Monsters). It can be used to break a monster's line of sight from or to a sector, making them effectively blind to things outside of their sector or at a specific sector.
+Reject
+
+The "REJECT" lump is built from real line of sight between sectors. A sector pair is hidden only when no straight line can run between them without crossing a one-sided line. Every two-sided line is treated as see-through whatever its floor and ceiling heights, so moving sectors (doors, lifts, macros) can only make sight easier than the table assumes, never harder. The table is therefore always safe, and it typically hides many more pairs than the old connectivity-only table, which lets the game skip the expensive BSP sight check for them. On large maps this step takes a while (minutes for 2000+ sectors), so it runs on all CPU cores. Set the environment variable BSP64_THREADS to use a different number of threads. The result does not depend on the thread count.
+
+Sectors can be removed from the "REJECT" lump with the special 999 (Blind To Monsters). Such a sector is hidden from every other sector and sees none of them, which makes monsters blind to things in or at that sector. Unlike before, it no longer cuts line of sight between the sectors on either side of it.
 
 ### Compress Edges Mode
 
