@@ -102,6 +102,8 @@ typedef REJECT_NUM num_t;
 
 // ----- structures ------------------------------------------------------
 
+#define BLK_RING  16
+
 typedef struct { num_t x, y; } pt_t;
 
 typedef struct
@@ -138,7 +140,10 @@ typedef struct
 {
   int loRow, hiRow;
   int *bound_lo, *bound_hi;
-  unsigned char *checkLine;
+  unsigned int *checkLine;      // stamp of the last call that added the line
+  unsigned int stamp;
+  int blk_ring[BLK_RING];       // solids that blocked recent line pairs
+  int blk_count;
   unsigned char *ignore;
   solid_t **testLines;
   const pt_t **polyPoints;
@@ -289,18 +294,26 @@ static void BuildGrid(const pt_t *pts, int num_pts)
 
 // ----- region marking (per thread) --------------------------------------
 
+// Marks the grid cells that the segment p1-p2 touches (one column range per
+// row).  This runs four times for every line pair that is tested, so it uses
+// plain doubles: the coordinates are exact in a double, and the column range
+// is widened a little (MARK_PAD) so rounding can only add cells, never lose
+// one.  Extra cells only mean a few more lines to look at.
+#define MARK_PAD  1e-3
+
 static void MarkEdge(ctx_t *c, const pt_t *p1, const pt_t *p2)
 {
-  num_t x0 = p1->x - grid_x0, y0 = p1->y - grid_y0;
-  num_t x1 = p2->x - grid_x0, y1 = p2->y - grid_y0;
+  const double inv = 1.0 / BLOCK_SIZE;
 
-  num_t dx = x1 - x0, dy = y1 - y0;
+  double x0 = (double) (p1->x - grid_x0), y0 = (double) (p1->y - grid_y0);
+  double x1 = (double) (p2->x - grid_x0), y1 = (double) (p2->y - grid_y0);
 
-  num_t ymin = (y0 < y1) ? y0 : y1;
-  num_t ymax = (y0 < y1) ? y1 : y0;
+  double ymin = (y0 < y1) ? y0 : y1;
+  double ymax = (y0 < y1) ? y1 : y0;
+  double slope = (y1 != y0) ? (x1 - x0) / (y1 - y0) : 0.0;
 
-  int ry0 = ClampInt(CellOf(ymin), 0, grid_rows - 1);
-  int ry1 = ClampInt(CellOf(ymax), 0, grid_rows - 1);
+  int ry0 = ClampInt((int) floor(ymin * inv), 0, grid_rows - 1);
+  int ry1 = ClampInt((int) floor(ymax * inv), 0, grid_rows - 1);
   int ry;
 
   if (ry0 < c->loRow) c->loRow = ry0;
@@ -308,26 +321,26 @@ static void MarkEdge(ctx_t *c, const pt_t *p1, const pt_t *p2)
 
   for (ry = ry0; ry <= ry1; ry++)
   {
-    num_t ylo = ymin > ry * (num_t) BLOCK_SIZE ? ymin : ry * (num_t) BLOCK_SIZE;
-    num_t yhi = ymax < (ry + 1) * (num_t) BLOCK_SIZE ? ymax : (ry + 1) * (num_t) BLOCK_SIZE;
-    num_t xa, xb, xmin, xmax;
+    double ylo = ymin > ry * (double) BLOCK_SIZE ? ymin : ry * (double) BLOCK_SIZE;
+    double yhi = ymax < (ry + 1) * (double) BLOCK_SIZE ? ymax : (ry + 1) * (double) BLOCK_SIZE;
+    double xa, xb, xmin, xmax;
     int cx0, cx1;
 
-    if (dy == 0)
+    if (y1 == y0)
     {
       xa = x0; xb = x1;
     }
     else
     {
-      xa = x0 + (ylo - y0) * dx / dy;
-      xb = x0 + (yhi - y0) * dx / dy;
+      xa = x0 + (ylo - y0) * slope;
+      xb = x0 + (yhi - y0) * slope;
     }
 
-    xmin = (xa < xb) ? xa : xb;
-    xmax = (xa < xb) ? xb : xa;
+    xmin = ((xa < xb) ? xa : xb) - MARK_PAD;
+    xmax = ((xa < xb) ? xb : xa) + MARK_PAD;
 
-    cx0 = ClampInt(CellOf(xmin), 0, grid_cols - 1);
-    cx1 = ClampInt(CellOf(xmax), 0, grid_cols - 1);
+    cx0 = ClampInt((int) floor(xmin * inv), 0, grid_cols - 1);
+    cx1 = ClampInt((int) floor(xmax * inv), 0, grid_cols - 1);
 
     if (cx0 < c->bound_lo[ry]) c->bound_lo[ry] = cx0;
     if (cx1 > c->bound_hi[ry]) c->bound_hi[ry] = cx1;
@@ -349,7 +362,12 @@ static int FindInterveningLines(ctx_t *c, lineset_t *set)
 {
   int row, col, lineCount = 0;
 
-  memset(c->checkLine, 1, num_solid);
+  // a line is "new" when its stamp is not the current one (no clearing)
+  if (++c->stamp == 0)
+  {
+    memset(c->checkLine, 0, (num_solid + 1) * sizeof(unsigned int));
+    c->stamp = 1;
+  }
 
   for (row = c->loRow; row <= c->hiRow; row++)
   {
@@ -363,8 +381,8 @@ static int FindInterveningLines(ctx_t *c, lineset_t *set)
         int id = cell_items[k];
 
         set->lines[lineCount] = &solids[id];
-        lineCount += c->checkLine[id] ? 1 : 0;
-        c->checkLine[id] = 0;
+        lineCount += (c->checkLine[id] != c->stamp) ? 1 : 0;
+        c->checkLine[id] = c->stamp;
       }
     }
 
@@ -540,6 +558,134 @@ static void RotatePoint(ctx_t *c, pt_t *p, num_t x, num_t y)
   p->y = c->DX * (y - c->Y) - c->DY * (x - c->X);
 }
 
+// ----- blocker cache ------------------------------------------------------
+//
+// Most line pairs are hidden because one single solid line is in the way
+// (TrimLines returns -1 for it).  Neighbouring line pairs tend to be blocked
+// by the same few lines, so the lines that blocked the last pairs are tried
+// first, before the cells between the two lines are even collected.  It is
+// the very same test TrimLines makes, so the answer is the same, only
+// quicker.
+
+static void RememberBlocker(ctx_t *c, int id)
+{
+  int i;
+
+  for (i = 0; i < c->blk_count; i++)
+    if (c->blk_ring[i] == id)
+      break;
+
+  if (i == c->blk_count)
+  {
+    if (c->blk_count < BLK_RING) c->blk_count++;
+    i = c->blk_count - 1;
+  }
+
+  // move to the front
+  for (; i > 0; i--)
+    c->blk_ring[i] = c->blk_ring[i-1];
+
+  c->blk_ring[0] = id;
+}
+
+// does 'line' block the view between src and tgt completely?  (same
+// conditions as in TrimLines)
+static int BlocksCompletely(const ctx_t *c, const solid_t *line,
+    num_t loY, num_t hiY, num_t loX, num_t hiX,
+    num_t minX, num_t maxX, num_t minY)
+{
+  pt_t start, end;
+
+  if (line->start->y <= loY)
+  {
+    if (line->end->y <= loY) return 0;
+  }
+  else if (line->start->y >= hiY)
+  {
+    if (line->end->y >= hiY) return 0;
+  }
+
+  if (line->start->x >= hiX)
+  {
+    if (line->end->x >= hiX) return 0;
+  }
+  else if (line->start->x <= loX)
+  {
+    if (line->end->x <= loX) return 0;
+  }
+
+  start.y = c->DX * (line->start->y - c->Y) - c->DY * (line->start->x - c->X);
+
+  if (start.y >= 0 || start.y <= minY)
+  {
+    end.y = c->DX * (line->end->y - c->Y) - c->DY * (line->end->x - c->X);
+
+    if ((end.y <= minY && start.y >= 0) || (end.y >= 0 && start.y <= minY))
+    {
+      start.x = c->DX * (line->start->x - c->X) + c->DY * (line->start->y - c->Y);
+
+      if (start.x >= minX && start.x <= maxX)
+      {
+        end.x = c->DX * (line->end->x - c->X) + c->DY * (line->end->y - c->Y);
+
+        if (end.x >= minX && end.x <= maxX)
+          return 1;
+      }
+    }
+  }
+
+  return 0;
+}
+
+// true if one of the remembered lines blocks the view between src and tgt
+static int CachedBlocker(ctx_t *c, const trans_t *src, const trans_t *tgt)
+{
+  num_t loY, hiY, loX, hiX;
+  pt_t p1, p2, p3;
+  num_t minX, maxX, minY;
+  int i;
+
+  if (c->blk_count == 0)
+    return 0;
+
+  c->X  = src->start->x;
+  c->Y  = src->start->y;
+  c->DX = tgt->end->x - src->start->x;
+  c->DY = tgt->end->y - src->start->y;
+
+  if (c->DX == 0 && c->DY == 0)
+    return 0;
+
+  GetBounds(src->start, src->end, tgt->start, tgt->end, &loY, &hiY, &loX, &hiX);
+
+  RotatePoint(c, &p1, src->end->x, src->end->y);
+  RotatePoint(c, &p2, tgt->start->x, tgt->start->y);
+  RotatePoint(c, &p3, tgt->end->x, tgt->end->y);
+
+  minX = (p1.x < 0) ? 0 : p1.x;
+  maxX = (p2.x < p3.x) ? p2.x : p3.x;
+  minY = (p1.y < p2.y) ? p1.y : p2.y;
+
+  if (minX > maxX)
+    return 0;
+
+  for (i = 0; i < c->blk_count; i++)
+  {
+    if (BlocksCompletely(c, &solids[c->blk_ring[i]], loY, hiY, loX, hiX, minX, maxX, minY))
+    {
+      if (i > 0)
+      {
+        int id = c->blk_ring[i];
+        for (; i > 0; i--) c->blk_ring[i] = c->blk_ring[i-1];
+        c->blk_ring[0] = id;
+      }
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
 // returns -1 when a single line blocks the view completely
 static int TrimLines(ctx_t *c, const trans_t *src, const trans_t *tgt, lineset_t *set)
 {
@@ -612,7 +758,10 @@ static int TrimLines(ctx_t *c, const trans_t *src, const trans_t *tgt, lineset_t
             end.x = c->DX * (line->end->x - c->X) + c->DY * (line->end->y - c->Y);
 
             if (end.x >= minX && end.x <= maxX)
+            {
+              RememberBlocker(c, line->id);
               return -1;
+            }
           }
         }
         else if ((end.y >= 0 && start.y >= 0) || (end.y <= minY && start.y <= minY))
@@ -1032,6 +1181,12 @@ static int CheckLOS(ctx_t *c, trans_t *src, trans_t *tgt)
 
   InitializeWorld(c, &w, src, tgt);
 
+  // a line that blocked a recent pair may block this one too (only when the
+  // two lines do not touch: those take the shortcut below instead)
+  if (src->end != tgt->start && src->start != tgt->end &&
+      CachedBlocker(c, src, tgt))
+    return 0;
+
   MarkBlockMap(c, &w);
 
   if (FindInterveningLines(c, &w.solidSet))
@@ -1202,7 +1357,7 @@ static void ThreadInit(ctx_t *c)
 
   c->bound_lo   = calloc(grid_rows, sizeof(int));
   c->bound_hi   = calloc(grid_rows, sizeof(int));
-  c->checkLine  = calloc(num_solid + 1, 1);
+  c->checkLine  = calloc(num_solid + 1, sizeof(unsigned int));
   c->ignore     = calloc(num_solid + 1, 1);
   c->testLines  = calloc(num_solid + 2, sizeof(solid_t *));
   c->polyPoints = calloc(2 * (num_solid + 2), sizeof(pt_t *));
