@@ -60,6 +60,7 @@ Advanced Options:
 +  -xu -noprune       Never prune linedefs or sidedefs
 +  -s  -skipselfref   Ignore self referencing lines
 +  -xt -notrials      Build the tree once with the classic glBSP cost (see Smaller Trees)
++  -xo -noorigin      Skip the blockmap origin search (tries all 16384 grid origins on all threads, keeps the smallest BLOCKMAP)
 
 ## Building
 

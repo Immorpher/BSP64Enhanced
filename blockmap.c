@@ -30,6 +30,8 @@
 #include <assert.h>
 
 #include "blockmap.h"
+#include "reject.h"
+#include <pthread.h>
 #include "level.h"
 #include "node.h"
 #include "seg.h"
@@ -45,6 +47,7 @@ static int block_x, block_y;
 static int block_w, block_h;
 static int block_count;
 
+static bbox_t block_map_bbox;
 static int block_mid_x = 0;
 static int block_mid_y = 0;
 
@@ -753,12 +756,6 @@ static void CreateBlockmap(void)
 
   block_lines = UtilCalloc(block_count * sizeof(uint16_g *));
 
-  if (cur_info->comp_edge && ! cur_info->no_block_rem)
-  {
-    PrepareStepSafety();
-    PrepareHangSafety();
-  }
-
   DisplayTicker();
 
   for (i=0; i < num_linedefs; i++)
@@ -770,12 +767,6 @@ static void CreateBlockmap(void)
       continue;
 
     BlockAddLine(L);
-  }
-
-  if (block_keep)
-  {
-    UtilFree(block_keep);
-    block_keep = NULL;
   }
 }
 
@@ -1075,6 +1066,8 @@ void InitBlockmap(void)
   PrintVerbose("Map goes from (%d,%d) to (%d,%d)\n",
       map_bbox.minx, map_bbox.miny, map_bbox.maxx, map_bbox.maxy);
 
+  block_map_bbox = map_bbox;
+
   block_x = map_bbox.minx - (map_bbox.minx & 0x7);
   block_y = map_bbox.miny - (map_bbox.miny & 0x7);
 
@@ -1082,6 +1075,314 @@ void InitBlockmap(void)
   block_h = ((map_bbox.maxy - block_y) / 128) + 1;
   block_count = block_w * block_h;
 
+}
+
+
+/* ----- blockmap origin search ------------------------------------- */
+
+// The size of the compressed blockmap depends on where the 128 unit grid
+// starts.  Every origin from (minx-127, miny-127) up to (minx, miny) is
+// tried (16384 of them) and the one giving the smallest lump is used.  Each
+// trial builds the block lists in private memory and only counts the bytes
+// the compressed lump would take (header, offsets, one null list and every
+// distinct list once), exactly as CompressBlockmap works them out, so the
+// result is the real size.  Trials are independent and are shared out over
+// threads.  The chosen origin does not depend on the number of threads.
+
+#define SEARCH_RANGE  128
+
+typedef struct
+{
+  int x1, y1, x2, y2;
+  int index;
+}
+sline_t;
+
+static sline_t *s_lines;
+static int s_num;
+static int s_minx, s_miny, s_maxx, s_maxy;
+static int s_limit;
+
+static long *s_result;       // size for each trial, or -1 if not allowed
+static int s_total;
+static int s_next;           // next trial to hand out (atomic)
+
+typedef struct
+{
+  int *pb;               // (block, line) pairs in line order
+  int *pl;
+  int pcap;
+
+  int *cnt;              // per block count / start of its list
+  int *start;
+  uint16_g *flat;
+  int *table;            // hash table of block numbers
+  int ccap;              // capacity of cnt / start / table
+  int tcap;
+}
+sctx_t;
+
+static void SearchEmit(sctx_t *c, int *n, int blk, int line)
+{
+  if (*n == c->pcap)
+  {
+    c->pcap = c->pcap ? c->pcap * 2 : 4096;
+    c->pb = UtilRealloc(c->pb, c->pcap * sizeof(int));
+    c->pl = UtilRealloc(c->pl, c->pcap * sizeof(int));
+  }
+  c->pb[*n] = blk;
+  c->pl[*n] = line;
+  (*n)++;
+}
+
+// size of the compressed lump for one origin, or -1 when it does not fit
+static long SearchTrial(sctx_t *c, int ox, int oy)
+{
+  int w = ((s_maxx - ox) / 128) + 1;
+  int h = ((s_maxy - oy) / 128) + 1;
+  int count = w * h;
+  int n = 0;
+  int i, j, tmask;
+  long size;
+
+  if (count > s_limit)
+    return -1;
+
+  if (count > c->ccap)
+  {
+    int tc = 16;
+    while (tc < count * 2) tc *= 2;
+    c->ccap = count;
+    c->tcap = tc;
+    c->cnt   = UtilRealloc(c->cnt,   count * sizeof(int));
+    c->start = UtilRealloc(c->start, (count + 1) * sizeof(int));
+    c->table = UtilRealloc(c->table, tc * sizeof(int));
+  }
+
+  for (i=0; i < s_num; i++)
+  {
+    const sline_t *L = &s_lines[i];
+
+    int bx1 = (MIN(L->x1, L->x2) - ox) / 128;
+    int by1 = (MIN(L->y1, L->y2) - oy) / 128;
+    int bx2 = (MAX(L->x1, L->x2) - ox) / 128;
+    int by2 = (MAX(L->y1, L->y2) - oy) / 128;
+    int bx, by;
+
+    if (bx1 < 0) bx1 = 0;
+    if (by1 < 0) by1 = 0;
+    if (bx2 >= w) bx2 = w - 1;
+    if (by2 >= h) by2 = h - 1;
+
+    if (bx2 < bx1 || by2 < by1)
+      continue;
+
+    if (by1 == by2)
+    {
+      for (bx=bx1; bx <= bx2; bx++)
+        SearchEmit(c, &n, by1 * w + bx, L->index);
+      continue;
+    }
+
+    if (bx1 == bx2)
+    {
+      for (by=by1; by <= by2; by++)
+        SearchEmit(c, &n, by * w + bx1, L->index);
+      continue;
+    }
+
+    for (by=by1; by <= by2; by++)
+    for (bx=bx1; bx <= bx2; bx++)
+    {
+      int minx = ox + bx * 128;
+      int miny = oy + by * 128;
+
+      if (CheckLinedefInsideBox(minx, miny, minx + 127, miny + 127,
+            L->x1, L->y1, L->x2, L->y2))
+        SearchEmit(c, &n, by * w + bx, L->index);
+    }
+  }
+
+  // counting sort into one flat array (keeps the lines in order)
+  memset(c->cnt, 0, count * sizeof(int));
+  for (i=0; i < n; i++)
+    c->cnt[c->pb[i]]++;
+
+  c->flat = UtilRealloc(c->flat, (n + 1) * sizeof(uint16_g));
+
+  j = 0;
+  for (i=0; i < count; i++)
+  {
+    c->start[i] = j;
+    j += c->cnt[i];
+  }
+  c->start[count] = j;
+
+  // reuse cnt as a fill position
+  for (i=0; i < count; i++)
+    c->cnt[i] = c->start[i];
+
+  for (i=0; i < n; i++)
+    c->flat[c->cnt[c->pb[i]]++] = (uint16_g) c->pl[i];
+
+  // count distinct non-empty lists
+  tmask = c->tcap - 1;
+  for (i=0; i < c->tcap; i++)
+    c->table[i] = -1;
+
+  size = 4 + count + 1;
+
+  for (i=0; i < count; i++)
+  {
+    int len = c->start[i+1] - c->start[i];
+    const uint16_g *a = c->flat + c->start[i];
+    unsigned int hsh = 2166136261u ^ (unsigned int) len;
+    int slot;
+
+    if (len == 0)
+      continue;
+
+    for (j=0; j < len; j++)
+      hsh = (hsh ^ a[j]) * 16777619u;
+
+    slot = (int) (hsh & tmask);
+
+    for (;;)
+    {
+      int other = c->table[slot];
+
+      if (other < 0)
+      {
+        c->table[slot] = i;
+        size += len + 1;
+        break;
+      }
+
+      if (c->start[other+1] - c->start[other] == len &&
+          memcmp(c->flat + c->start[other], a, len * sizeof(uint16_g)) == 0)
+        break;   // duplicate
+
+      slot = (slot + 1) & tmask;
+    }
+  }
+
+  if (size > 65535)
+    return -1;
+
+  return size;
+}
+
+static void *SearchWorker(void *arg)
+{
+  sctx_t c;
+
+  (void) arg;
+  memset(&c, 0, sizeof(c));
+
+  for (;;)
+  {
+    int t = __atomic_fetch_add(&s_next, 1, __ATOMIC_RELAXED);
+    int ox, oy;
+
+    if (t >= s_total)
+      break;
+
+    ox = s_minx - (t % SEARCH_RANGE);
+    oy = s_miny - (t / SEARCH_RANGE);
+
+    // the header stores the origin as a signed 16 bit number
+    if (ox < -32768 || oy < -32768)
+      s_result[t] = -1;
+    else
+      s_result[t] = SearchTrial(&c, ox, oy);
+  }
+
+  UtilFree(c.pb);   UtilFree(c.pl);
+  UtilFree(c.cnt);  UtilFree(c.start);
+  UtilFree(c.flat); UtilFree(c.table);
+
+  return NULL;
+}
+
+static void SearchBlockmapOrigin(void)
+{
+  int i, t, best, def;
+  int num_threads, started = 0;
+  pthread_t threads[64];
+
+  s_num = 0;
+  s_lines = UtilCalloc((num_linedefs + 1) * sizeof(sline_t));
+
+  for (i=0; i < num_linedefs; i++)
+  {
+    linedef_t *L = LookupLinedef(i);
+
+    if (L->zero_len || BlockLineIsOmitted(L))
+      continue;
+
+    s_lines[s_num].x1 = (int) L->start->x;
+    s_lines[s_num].y1 = (int) L->start->y;
+    s_lines[s_num].x2 = (int) L->end->x;
+    s_lines[s_num].y2 = (int) L->end->y;
+    s_lines[s_num].index = L->index;
+    s_num++;
+  }
+
+  s_minx = block_map_bbox.minx;  s_maxx = block_map_bbox.maxx;
+  s_miny = block_map_bbox.miny;  s_maxy = block_map_bbox.maxy;
+  s_limit = cur_info->block_limit;
+
+  s_total = SEARCH_RANGE * SEARCH_RANGE;
+  s_result = UtilCalloc(s_total * sizeof(long));
+  s_next = 0;
+
+  DisplayTicker();
+
+  num_threads = DefaultThreads();
+  if (num_threads > 64) num_threads = 64;
+
+  for (t=1; t < num_threads; t++)
+  {
+    if (pthread_create(&threads[started], NULL, SearchWorker, NULL) != 0)
+      break;
+    started++;
+  }
+
+  SearchWorker(NULL);
+
+  for (t=0; t < started; t++)
+    pthread_join(threads[t], NULL);
+
+  // pick the smallest; on a tie keep the usual origin, else the first found
+  def = (block_map_bbox.miny & 7) * SEARCH_RANGE + (block_map_bbox.minx & 7);
+  best = -1;
+
+  for (t=0; t < s_total; t++)
+  {
+    if (s_result[t] < 0)
+      continue;
+
+    if (best < 0 || s_result[t] < s_result[best])
+      best = t;
+  }
+
+  if (best >= 0 && (s_result[def] < 0 || s_result[best] < s_result[def]))
+  {
+    block_x = s_minx - (best % SEARCH_RANGE);
+    block_y = s_miny - (best / SEARCH_RANGE);
+    block_w = ((s_maxx - block_x) / 128) + 1;
+    block_h = ((s_maxy - block_y) / 128) + 1;
+    block_count = block_w * block_h;
+
+    PrintVerbose("Blockmap origin search: (%d,%d) %dx%d, %ld words "
+        "(usual origin: %ld)\n", block_x, block_y, block_w, block_h,
+        s_result[best], s_result[def]);
+  }
+
+  UtilFree(s_result);
+  UtilFree(s_lines);
+  s_result = NULL;
+  s_lines = NULL;
 }
 
 //
@@ -1101,7 +1402,24 @@ void PutBlockmap(void)
   // initial phase: create internal blockmap containing the index of
   // all lines in each block.
   
+  if (cur_info->comp_edge && ! cur_info->no_block_rem)
+  {
+    PrepareStepSafety();
+    PrepareHangSafety();
+  }
+
+  // look for the grid origin that gives the smallest lump
+  if (! cur_info->no_origin_search && ! cur_info->fast &&
+      block_count <= cur_info->block_limit && num_linedefs > 0)
+    SearchBlockmapOrigin();
+
   CreateBlockmap();
+
+  if (block_keep)
+  {
+    UtilFree(block_keep);
+    block_keep = NULL;
+  }
 
   // -AJA- second phase: compress the blockmap.  We do this by sorting
   //       the blocks, which is a typical way to detect duplicates in

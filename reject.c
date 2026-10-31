@@ -1238,7 +1238,7 @@ static int work_count;
 static int work_next;             // next index to hand out (atomic)
 static int work_tick_step;
 
-static int DefaultThreads(void)
+int DefaultThreads(void)
 {
   const char *env;
   int n = 0;

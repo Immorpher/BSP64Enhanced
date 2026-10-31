@@ -97,6 +97,7 @@ static void ShowOptions(void)
     "  -xu -noprune       Never prune linedefs or sidedefs\n"
 	"  -s  -skipselfref   Ignore self referencing lines\n"
     "  -xt -notrials      Build the tree once with the classic cost\n"
+    "  -xo -noorigin      Do not search for the smallest blockmap origin\n"
   );
 }
 

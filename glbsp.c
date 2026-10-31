@@ -66,6 +66,7 @@ const nodebuildinfo_t default_buildinfo =
   FALSE,   // skip_self_ref
   FALSE,   // no_trials
   FALSE,   // factor_given
+  FALSE,   // no_origin_search
 
   DEFAULT_BLOCK_LIMIT,   // block_limit
 
@@ -255,6 +256,7 @@ glbsp_ret_e GlbspParseArgs(nodebuildinfo_t *info,
     HANDLE_BOOLEAN2("s",  "skipselfref", skip_self_ref)
     HANDLE_BOOLEAN2("xu", "noprune",     no_prune)
     HANDLE_BOOLEAN2("xt", "notrials",    no_trials)
+    HANDLE_BOOLEAN2("xo", "noorigin",    no_origin_search)
 
     // to err is human...
     HANDLE_BOOLEAN("noprogress",  no_progress)

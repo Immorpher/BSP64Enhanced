@@ -27,4 +27,7 @@
 // build the reject table and write it into the REJECT lump
 void PutReject(void);
 
+// number of worker threads (BSP64_THREADS, else the number of processors)
+int DefaultThreads(void);
+
 #endif /* __GLBSP_REJECT_H__ */
