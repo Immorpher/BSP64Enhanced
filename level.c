@@ -512,7 +512,9 @@ static INLINE_G int TransformSegDist(const seg_t *seg)
   float_g sx = seg->side ? seg->linedef->end->x : seg->linedef->start->x;
   float_g sy = seg->side ? seg->linedef->end->y : seg->linedef->start->y;
 
-  return (int) ceil(UtilComputeDist(seg->start->x - sx, seg->start->y - sy));
+  // nearest whole number: smallest texture misalignment between the
+  // pieces of a split wall (error of at most half a unit, no bias)
+  return (int) floor(UtilComputeDist(seg->start->x - sx, seg->start->y - sy) + 0.5);
 }
 
 static INLINE_G int TransformAngle(angle_g angle)
@@ -547,6 +549,15 @@ static int SegCompare(const void *p1, const void *p2)
 
 static int real_vert_num = 0;
 
+// 16.16 fixed point, rounded to nearest.  Truncating made a computed
+// coordinate like 37.9999999 come out as 37.99998 (whole part 37), and the
+// engine only looks at the whole part when it decides which side of a
+// partition a point is on.
+static INLINE_G int VertexFixed(double v)
+{
+  return (int) floor(v * 65536.0 + 0.5);
+}
+
 // number of vertices that the Doom 64 engine can index
 #ifndef VERTEX_SOFT_LIMIT
 #define VERTEX_SOFT_LIMIT  32768   // signed 16-bit index (original engine)
@@ -572,8 +583,8 @@ void PutVertices(void)
 	if(vert->index & IS_GL_VERTEX)
       continue;
 
-    raw.x = SINT32((int)(vert->x * 65536.0));
-    raw.y = SINT32((int)(vert->y * 65536.0));
+    raw.x = SINT32(VertexFixed(vert->x));
+    raw.y = SINT32(VertexFixed(vert->y));
 
     AppendLevelLump(lump, &raw, sizeof(raw));
 
@@ -600,8 +611,8 @@ void PutVertices(void)
         continue;
       }
 
-      raw.x = SINT32((int)(vert->x * 65536.0));
-      raw.y = SINT32((int)(vert->y * 65536.0));
+      raw.x = SINT32(VertexFixed(vert->x));
+      raw.y = SINT32(VertexFixed(vert->y));
       vert->index = real_vert_num + gl_count;
       gl_count++;
 
