@@ -1,4 +1,4 @@
-# BSP64 Enhanced 1.15
+# BSP64 Enhanced 1.16
 
 This is a multi-threaded nodebuilder for Doom 64 which has blockmap optimization, sidedef compression, and reject optimization features. It originates from Diema's DMA-BSP64 (https://github.com/darkhaven3/dma-bsp64) which adds features from ZokumBSP (https://doomwiki.org/wiki/ZokumBSP) to Kaiser's D64BSP (https://github.com/MP2E/d64bsp), which is based on glBSP (https://doomwiki.org/wiki/GlBSP), which is further based on the original BSP (https://doomwiki.org/wiki/BSP_(node_builder)).
 
