@@ -1297,9 +1297,13 @@ static void *SearchWorker(void *arg)
       s_result[t] = SearchTrial(&c, ox, oy);
   }
 
-  UtilFree(c.pb);   UtilFree(c.pl);
-  UtilFree(c.cnt);  UtilFree(c.start);
-  UtilFree(c.flat); UtilFree(c.table);
+  // A thread that starts after the others have already taken every trial
+  // (typical for small maps on machines with many cores) never allocates
+  // anything, so these can still be NULL.  UtilFree() treats NULL as an
+  // internal error, so use plain free() here, which accepts NULL.
+  free(c.pb);   free(c.pl);
+  free(c.cnt);  free(c.start);
+  free(c.flat); free(c.table);
 
   return NULL;
 }
